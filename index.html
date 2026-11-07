@@ -1,0 +1,2459 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>무너지는 도서관 탈출</title>
+<style>
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #1b1014;
+    font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
+  #wrap { position: fixed; inset: 0; touch-action: none; }
+  #gl { display: block; width: 100%; height: 100%; }
+  #hud {
+    position: fixed; top: 10px; right: 14px; z-index: 4; text-align: right;
+    color: #fbe9c8; pointer-events: none; text-shadow: 0 2px 8px rgba(0,0,0,.7);
+  }
+  #score { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  #bestHud { font-size: 13px; opacity: .75; }
+  #hint {
+    position: fixed; left: 0; right: 0; bottom: 14px; z-index: 4;
+    display: flex; justify-content: center; padding: 0 18px;
+    color: #fbe9c8; font-size: 14px; font-weight: 600; pointer-events: none;
+    text-shadow: 0 2px 6px rgba(0,0,0,.8); transition: opacity .6s;
+  }
+  #toast {
+    position: fixed; top: 22%; left: 50%; transform: translateX(-50%); z-index: 6;
+    padding: 10px 20px; border-radius: 999px; white-space: nowrap;
+    background: rgba(40,20,10,.75); border: 2px solid #f0c75e; color: #ffe6a8;
+    font-size: 18px; font-weight: 800; pointer-events: none;
+    animation: pop .5s cubic-bezier(.2,1.6,.4,1);
+  }
+  @keyframes pop { from { transform: translateX(-50%) scale(.4); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
+  .overlay {
+    position: fixed; inset: 0; overflow-y: auto; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; justify-content: safe center;
+    text-align: center; padding: 12px; box-sizing: border-box;
+    background: rgba(28,16,24,.62); color: #fbe9c8;
+  }
+  .hidden { display: none !important; }
+  h1 { margin: 0 0 6px; font-size: 26px; }
+  .sub { margin: 0 0 12px; font-size: 14px; color: #e6d2b0; line-height: 1.5; }
+  .big { font-size: 34px; font-weight: 800; margin: 2px 0; color: #ffcf6e; }
+  .book {
+    margin: 10px 0; padding: 10px 16px; border-radius: 12px;
+    background: #fdf6e8; color: #3a2e1f; border: 2px solid #f0c75e; max-width: 92%;
+  }
+  .book .t { font-weight: 700; font-size: 17px; }
+  .book .m { font-size: 13px; color: #7a6a52; margin-top: 3px; }
+  button {
+    font: inherit; font-size: 17px; font-weight: 700;
+    padding: 10px 26px; border: 0; border-radius: 999px;
+    background: #c2552d; color: #fff; cursor: pointer;
+  }
+  button:active { transform: scale(.97); }
+  .admin { width: 100%; max-width: 620px; margin: 0 auto; text-align: left; }
+  .admin-head { display: flex; justify-content: space-between; align-items: center;
+    position: sticky; top: -12px; padding: 8px 0; background: rgba(20,12,18,.98); }
+  .admin-sum { font-size: 13px; color: #e6d2b0; margin: 4px 0 10px; line-height: 1.7; }
+  .admin-sum span { display: inline-block; background: rgba(240,199,94,.15); border: 1px solid rgba(240,199,94,.4);
+    border-radius: 999px; padding: 0 9px; margin: 0 4px 4px 0; }
+  .admin h2 { font-size: 14px; color: #ffcf6e; margin: 14px 0 6px; border-bottom: 1px solid rgba(240,199,94,.3); padding-bottom: 4px; }
+  .admin-row { display: flex; gap: 10px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid rgba(251,233,200,.08); font-size: 14px; }
+  .admin-row .pg { flex: 0 0 52px; text-align: right; font-weight: 700; color: #ffcf6e; font-variant-numeric: tabular-nums; }
+  .admin-row .info { flex: 1; min-width: 0; }
+  .admin-row .t { font-weight: 700; color: #fbe9c8; }
+  .admin-row .a { font-size: 12px; color: #bfa98a; }
+  .admin-row a { flex: 0 0 auto; font-size: 12px; color: #f0a07a; }
+  .mute {
+    position: fixed; top: 10px; left: 10px; z-index: 5;
+    width: 40px; height: 40px; padding: 0; font-size: 18px;
+    background: rgba(28,16,24,.55); border: 1px solid rgba(251,233,200,.35);
+  }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="gl"></canvas></div>
+
+<div id="hud"><div id="score">0쪽</div><div id="bestHud">최고 0쪽</div></div>
+<div id="hint" class="hidden"><span>← → 피하기·꺾기 · ↑ 점프 · ↓ 슬라이드</span></div>
+<div id="toast" class="hidden"></div>
+<button id="muteBtn" class="mute" aria-label="소리 켜기/끄기">🔊</button>
+<button id="pauseBtn" class="mute hidden" style="left:58px" aria-label="일시정지">⏸</button>
+
+<div id="pauseScreen" class="overlay hidden">
+  <h1>⏸ 일시정지</h1>
+  <p class="sub" id="pauseText"></p>
+  <button id="resumeBtn">계속하기</button>
+</div>
+
+<div id="startScreen" class="overlay">
+  <h1 id="startTitle">🧚 무너지는 도서관 탈출</h1>
+  <p class="sub" id="startSub">오래된 도서관이 무너지고 있어요!<br>
+    책의 요정이 무사히 빠져나가도록 도와주세요.<br>
+    흩날리는 📄 종이를 모으고 ✨황금 책(10쪽)도 챙기세요.<br>
+    바닥이 꺼지면 점프! 모퉁이에선 화살표 쪽으로 꺾기!<br>
+    요정은 고마움을 담아 모은 쪽수만큼의 책을 선물해 줘요 📖<br><br>
+    <b>← → 밀기</b> = 옆으로 피하기 · 모퉁이에서 꺾기<br><b>↑ 밀기 · 톡</b> = 점프 · <b>↓ 밀기</b> = 슬라이드<br>
+    (키보드: ← → 이동, 스페이스/↑ 점프, ↓ 슬라이드, P 일시정지)</p>
+  <button id="startBtn">시작하기</button>
+</div>
+
+<div id="overScreen" class="overlay hidden">
+  <div class="sub" style="margin:0">🧚 요정과 함께 모은 종이</div>
+  <div class="big" id="scoreText">0쪽</div>
+  <div class="sub" id="bestText" style="margin:0"></div>
+  <div class="book">
+    <div class="m" id="fairyMsg" style="color:#3a2e1f;font-size:14px;line-height:1.5;margin-bottom:8px"></div>
+    <div class="m" id="recLabel">요정의 선물</div>
+    <div class="t" id="recTitle"></div>
+    <div class="m" id="recMeta"></div>
+    <div class="m" id="recNote" style="margin-top:5px;color:#3a2e1f"></div>
+    <a id="recLink" class="m" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px;color:#b8432f;font-weight:700">서점에서 보기 →</a>
+  </div>
+  <button id="retryBtn">다시 탈출하기</button>
+</div>
+
+<!-- 관리자용 책 목록 -->
+<div id="adminScreen" class="overlay hidden" style="z-index:20;background:#140c12">
+  <div class="admin">
+    <div class="admin-head">
+      <h1 style="font-size:20px;margin:0">📖 추천 책 목록</h1>
+      <button id="adminClose" style="padding:6px 16px;font-size:14px">닫기</button>
+    </div>
+    <div id="adminSummary" class="admin-sum"></div>
+    <div id="adminList"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script>
+/* =========================================================
+   📖 추천 책 목록 — 여기만 바꾸면 돼요!
+   pages(쪽수)를 기준으로 달린 쪽수와 가장 가까운 책이 추천돼요.
+   쪽수는 적힌 출판사 판본 기준이에요 (알라딘·예스24에서 확인).
+   ========================================================= */
+const BOOKS = [
+  { title: "개구리가 되고 싶어", author: "김화진", pub: "위즈덤하우스", pages: 88, note: "한 번에 읽히는 짧은 소설", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=353629318" },
+  { title: "파쇄", author: "구병모", pub: "위즈덤하우스", pages: 96, note: "『파과』 속 킬러 조각의 젊은 날", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=312732931" },
+  { title: "맡겨진 소녀", author: "클레어 키건", pub: "다산책방", pages: 104, note: "낯선 집에 맡겨진 소녀의 여름", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=315552626" },
+  { title: "만조를 기다리며", author: "조예은", pub: "위즈덤하우스", pages: 132, note: "짧고 강렬한 한국 소설", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=316811186" },
+  { title: "이반 일리치의 죽음", author: "레프 톨스토이", pub: "창비", pages: 160, note: "죽음 앞에서 삶의 의미를 묻는 고전", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=20132372" },
+  { title: "동물농장", author: "조지 오웰", pub: "민음사", pages: 184, note: "동물 혁명으로 권력의 타락을 풍자", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=40674" },
+  { title: "이중 하나는 거짓말", author: "김애란", pub: "문학동네", pages: 240, note: "비밀을 품은 세 아이의 성장 이야기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=344747677" },
+  { title: "데미안", author: "헤르만 헤세", pub: "민음사", pages: 248, note: "진짜 나를 찾아가는 성장의 기록", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=260084" },
+  { title: "이토록 평범한 미래", author: "김연수", pub: "문학동네", pages: 276, note: "시간과 기억, 희망을 다룬 소설집", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=302118006" },
+  { title: "하얼빈", author: "김훈", pub: "문학동네", pages: 308, note: "안중근 거사 직전의 뜨거운 일주일", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=298570092" },
+  { title: "프랑켄슈타인", author: "메리 셸리", pub: "문학동네", pages: 324, note: "만들어진 존재가 묻는 인간다움", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=17421649" },
+  { title: "작별하지 않는다", author: "한강", pub: "문학동네", pages: 332, note: "제주 4·3을 건너온 사랑과 기억", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=278770576" },
+  { title: "밝은 밤", author: "최은영", pub: "문학동네", pages: 344, note: "4대에 걸친 여성들의 삶과 우정", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=275419192" },
+  { title: "내가 된다는 것", author: "아닐 세스", pub: "흐름출판", pages: 356, note: "의식과 자아를 뇌과학으로 탐구", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=297116146" },
+  { title: "천 개의 파랑", author: "천선란", pub: "허블", pages: 376, note: "경주마와 로봇 기수가 만든 기적", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=248956900" },
+  { title: "지구 끝의 온실", author: "김초엽", pub: "자이언트북스", pages: 392, note: "멸망 이후 세계를 살린 식물 이야기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=276926308" },
+  { title: "1984", author: "조지 오웰", pub: "문학동네", pages: 400, note: "감시 사회에 맞선 한 사람의 저항", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=5966698" },
+  { title: "공정하다는 착각", author: "마이클 샌델", pub: "와이즈베리", pages: 420, note: "능력주의의 그늘을 묻는 정치철학", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=254700620" },
+  { title: "클라라와 태양", author: "가즈오 이시구로", pub: "민음사", pages: 448, note: "AI 친구 클라라가 본 사랑과 인간", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=267220169" },
+  { title: "도둑맞은 집중력", author: "요한 하리", pub: "어크로스", pages: 464, note: "우리가 집중하지 못하는 진짜 이유", url: "https://www.yes24.com/product/goods/118579613" },
+  { title: "앵무새 죽이기", author: "하퍼 리", pub: "열린책들", pages: 544, note: "편견에 맞선 아버지와 딸의 이야기", url: "https://www.yes24.com/product/goods/18757278" },
+  { title: "오만과 편견", author: "제인 오스틴", pub: "민음사", pages: 559, note: "엘리자베스와 다아시의 엇갈린 첫인상", url: "https://www.yes24.com/product/goods/402246" },
+  { title: "물질의 세계", author: "에드 콘웨이", pub: "인플루엔셜", pages: 584, note: "모래·소금 등 6가지 물질의 문명사", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=334786620" },
+  { title: "철도원 삼대", author: "황석영", pub: "창비", pages: 620, note: "철도원 가족 삼대로 본 한국 근현대사", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=240581875" },
+  { title: "프로젝트 헤일메리", author: "앤디 위어", pub: "알에이치코리아", pages: 692, note: "기억을 잃고 우주에서 깨어난 과학자", url: "https://www.yes24.com/product/goods/101375755" },
+  // ---- 서점 베스트셀러 (2026년 11월 초) ----
+  { title: "짧은 이야기들", author: "앤 카슨", pub: "난다", pages: 132, note: "단어가 사라진 뒤 쓴 짧은 산문시", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=373368987" },
+  { title: "브람스를 좋아하세요...", author: "프랑수아즈 사강", pub: "민음사", pages: 160, note: "서른아홉 폴의 권태와 새로운 사랑", url: "https://www.yes24.com/product/goods/2950700" },
+  { title: "나는 살아야겠다", author: "전은옥", pub: "삶창", pages: 164, note: "남다른 아이를 키우는 엄마의 시집", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=401487844" },
+  { title: "인간 실격", author: "다자이 오사무", pub: "민음사", pages: 191, note: "순수를 갈망하다 무너지는 청년", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=491611" },
+  { title: "그랬다고 적었다", author: "김애란", pub: "문학동네", pages: 220, note: "김애란이 7년 만에 낸 첫 산문집", url: "https://www.yes24.com/product/goods/195042981" },
+  { title: "쇼펜하우어 인생수업", author: "쇼펜하우어", pub: "하이스트", pages: 224, note: "쇼펜하우어 철학을 60편 글로 풀다", url: "https://www.yes24.com/product/goods/125085536" },
+  { title: "세네카, 오늘을 빼앗기고 있는 당신에게", author: "세네카", pub: "논픽션", pages: 236, note: "빼앗긴 시간을 되찾는 세네카의 조언", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=404259167" },
+  { title: "싯다르타", author: "헤르만 헤세", pub: "민음사", pages: 252, note: "스스로 깨달음을 찾아가는 구도의 길", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=329596" },
+  { title: "자연의 것들은 그저 자란다", author: "이윤 리", pub: "다산책방", pages: 252, note: "두 아들을 잃은 작가의 애도 기록", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=403156082" },
+  { title: "빨강의 자서전", author: "앤 카슨", pub: "한겨레출판", pages: 256, note: "괴물 게리온의 눈으로 다시 쓴 신화", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=353110834" },
+  { title: "빅터 프랭클의 죽음의 수용소에서", author: "빅터 프랭클", pub: "청아출판사", pages: 264, note: "수용소에서 찾은 삶의 의미", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=382243812" },
+  { title: "독재자(들)", author: "황현필", pub: "역바연", pages: 296, note: "한국 현대사의 권력자들을 다시 보기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=403886275" },
+  { title: "급류", author: "정대건", pub: "민음사", pages: 300, note: "비극의 밤 뒤 다시 만난 두 연인", url: "https://www.yes24.com/product/goods/116586303" },
+  { title: "모순", author: "양귀자", pub: "쓰다", pages: 308, note: "쌍둥이 자매의 삶에서 본 모순", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=25843736" },
+  { title: "우리는 서로를 통해 존재한다", author: "카를로 로벨리", pub: "쌤앤파커스", pages: 312, note: "시간·양자·블랙홀을 잇는 강연록", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=402367577" },
+  { title: "세상이 그대를 속일지라도", author: "김상욱", pub: "동아시아", pages: 320, note: "물리학으로 본 변하지 않는 것들", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=394233247" },
+  { title: "안녕이라 그랬어", author: "김애란", pub: "문학동네", pages: 320, note: "타인의 공간을 찾는 일곱 편의 단편", url: "https://www.yes24.com/product/goods/147560984" },
+  { title: "절창", author: "구병모", pub: "문학동네", pages: 352, note: "상처로 마음을 읽는 여자와 그 비밀", url: "https://www.yes24.com/product/goods/153497469" },
+  { title: "파라오의 밀실", author: "시라카와 나오후미", pub: "북다", pages: 372, note: "고대 이집트 배경의 미스터리", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=405330528" },
+  { title: "리더는 언제 차이를 만들어내는가", author: "재레드 다이아몬드", pub: "김영사", pages: 372, note: "한 사람이 역사를 바꾸는 조건", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=401294662" },
+  { title: "가호", author: "무라카미 하루키", pub: "문학동네", pages: 376, note: "기묘한 일에 휘말린 그림책 작가", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=403216369" },
+  { title: "수족관", author: "유래혁", pub: "포스터샵", pages: 376, note: "상처 입은 두 사람이 꿈꾸는 바다", url: "https://www.yes24.com/product/goods/124235834" },
+  { title: "녹색 절벽의 신자들", author: "조예은", pub: "오리지널스", pages: 388, note: "얼굴을 못 알아보는 소녀와 사라진 친구", url: "https://www.yes24.com/product/goods/195804454" },
+  { title: "투명한 나선", author: "히가시노 게이고", pub: "북다", pages: 412, note: "바다에서 발견된 시신의 수수께끼", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=398021172" },
+  { title: "서늘한 대화", author: "정재승", pub: "어크로스", pages: 432, note: "AI 시대 인간의 자리를 묻다", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=403713715" },
+  { title: "한국사 이상현상 연구원", author: "최인서", pub: "다이브", pages: 500, note: "궁궐·왕릉의 괴이를 쫓는 비밀조직", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=400909759" },
+  { title: "지능의 기원", author: "맥스 베넷", pub: "더퀘스트", pages: 536, note: "뇌 진화의 다섯 번의 도약", url: "https://www.yes24.com/product/goods/141325043" },
+  { title: "테오", author: "앨런 레비", pub: "오팬하우스", pages: 556, note: "초상화 92점을 돌려주는 노인의 여정", url: "https://www.yes24.com/product/goods/192469071" },
+  { title: "이기적 유전자", author: "리처드 도킨스", pub: "을유문화사", pages: 632, note: "유전자의 눈으로 본 진화론 고전", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=401291344" },
+  // ---- 추가 (검증된 후보) ----
+  { title: "분노하라", author: "스테판 에셀", pub: "돌베개", pages: 88, note: "무관심 대신 분노하라는 노투사의 외침", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=11918421" },
+  { title: "우리는 모두 페미니스트가 되어야 합니다", author: "치마만다 응고지 아디치에", pub: "창비", pages: 96, note: "일상 속 성차별을 쉽게 짚은 강연록", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=74920380" },
+  { title: "82년생 김지영", author: "조남주", pub: "민음사", pages: 192, note: "평범한 여성의 삶에 담긴 차별", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=97946445" },
+  { title: "노인과 바다", author: "어니스트 헤밍웨이", pub: "민음사", pages: 204, note: "거대한 물고기와 싸운 늙은 어부", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=14522431" },
+  { title: "소년이 온다", author: "한강", pub: "창비", pages: 216, note: "5·18 광주의 소년과 남은 이들 이야기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=40869703" },
+  { title: "떨림과 울림", author: "김상욱", pub: "동아시아", pages: 272, note: "물리학자의 눈으로 본 우주와 인간", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=251805895" },
+  { title: "그리고 아무도 없었다", author: "애거서 크리스티", pub: "황금가지", pages: 331, note: "외딴섬에 갇힌 열 사람의 최후", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=34986856" },
+  { title: "미움받을 용기", author: "기시미 이치로·고가 후미타케", pub: "인플루엔셜", pages: 336, note: "아들러 심리학으로 배우는 용기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=102279976" },
+  { title: "시선으로부터,", author: "정세랑", pub: "문학동네", pages: 340, note: "할머니 심시선을 기리는 가족의 여행", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=241313700" },
+  { title: "역사의 역사", author: "유시민", pub: "돌베개", pages: 340, note: "역사가들은 역사를 어떻게 써왔나", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=149445257" },
+  { title: "우리가 빛의 속도로 갈 수 없다면", author: "김초엽", pub: "허블", pages: 344, note: "따뜻한 시선의 SF 소설집", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=193591681" },
+  { title: "지리의 힘", author: "팀 마샬", pub: "사이", pages: 368, note: "지도로 읽는 강대국의 속사정", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=88640864" },
+  { title: "종의 기원", author: "정유정", pub: "은행나무", pages: 384, note: "자신 안의 악을 마주한 청년", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=74920934" },
+  { title: "정재승의 과학 콘서트", author: "정재승", pub: "어크로스", pages: 388, note: "일상에 숨은 과학 이야기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=243970084" },
+  { title: "남아 있는 나날", author: "가즈오 이시구로", pub: "민음사", pages: 388, note: "노집사가 되돌아본 충직한 생애", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=270046781" },
+  { title: "스토너", author: "존 윌리엄스", pub: "알에이치코리아", pages: 396, note: "평범한 교수의 조용하고 단단한 삶", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=51001915" },
+  { title: "다정한 것이 살아남는다", author: "브라이언 헤어·버네사 우즈", pub: "디플롯", pages: 396, note: "친화력이 이끈 진화의 승리", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=276088365" },
+  { title: "멋진 신세계", author: "올더스 헉슬리", pub: "소담", pages: 400, note: "행복이 통제되는 미래 사회", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=60836103" },
+  { title: "칼의 노래", author: "김훈", pub: "문학동네", pages: 400, note: "이순신의 고독한 마지막 싸움", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=14628764" },
+  { title: "랩걸", author: "호프 자런", pub: "알마", pages: 412, note: "나무를 연구한 식물학자의 삶과 우정", url: "https://www.yes24.com/product/goods/36390807" },
+  { title: "정의란 무엇인가", author: "마이클 샌델", pub: "와이즈베리", pages: 444, note: "정의를 둘러싼 철학 강의", url: "https://www.yes24.com/product/goods/15156691" },
+  { title: "남한산성", author: "김훈", pub: "학고재", pages: 448, note: "병자호란 47일, 고립된 성의 선택", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=112952239" },
+  { title: "나미야 잡화점의 기적", author: "히가시노 게이고", pub: "현대문학", pages: 456, note: "고민 상담 편지가 잇는 기적", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=307689982" },
+  { title: "팩트풀니스", author: "한스 로슬링 외", pub: "김영사", pages: 484, note: "데이터로 바로잡는 세상에 대한 오해", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=345384332" },
+  { title: "안네의 일기", author: "안네 프랑크", pub: "문학사상", pages: 484, note: "은신처에서 쓴 소녀의 일기", url: "https://www.yes24.com/product/goods/135806469" },
+  { title: "침묵의 봄", author: "레이첼 카슨", pub: "에코리브르", pages: 504, note: "살충제의 위험을 알린 환경 고전", url: "https://www.yes24.com/product/goods/126181478" },
+  { title: "7년의 밤", author: "정유정", pub: "은행나무", pages: 524, note: "한밤의 사고가 부른 두 가족의 비극", url: "https://www.yes24.com/product/goods/4701388" },
+  { title: "고래", author: "천명관", pub: "문학동네", pages: 564, note: "거침없이 펼쳐지는 여인들의 일대기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=35395777" },
+  { title: "폭풍의 언덕", author: "에밀리 브론테", pub: "민음사", pages: 572, note: "황야에서 엇갈린 격정의 사랑", url: "https://www.yes24.com/product/goods/1470060" },
+  { title: "노르웨이의 숲", author: "무라카미 하루키", pub: "민음사", pages: 572, note: "상실을 지나는 청춘의 기억", url: "https://www.yes24.com/product/goods/44499829" },
+  { title: "연을 쫓는 아이", author: "할레드 호세이니", pub: "현대문학", pages: 584, note: "아프간 두 소년의 우정과 속죄", url: "https://www.yes24.com/product/goods/112072385" },
+  { title: "호모 데우스", author: "유발 하라리", pub: "김영사", pages: 630, note: "신이 되려는 인간의 미래", url: "https://www.yes24.com/product/goods/39404092" },
+  { title: "사피엔스", author: "유발 하라리", pub: "김영사", pages: 636, note: "인류는 어떻게 지구의 주인이 되었나", url: "https://www.yes24.com/product/goods/23030284" },
+  { title: "거의 모든 것의 역사 2.0", author: "빌 브라이슨", pub: "까치", pages: 636, note: "우주에서 인간까지 과학의 역사", url: "https://www.yes24.com/product/goods/170397973" },
+  { title: "코스모스", author: "칼 세이건", pub: "사이언스북스", pages: 719, note: "우주를 향한 경이로운 여행", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=870950" },
+  { title: "총 균 쇠", author: "재레드 다이아몬드", pub: "김영사", pages: 784, note: "대륙마다 문명의 운명이 갈린 이유", url: "https://www.yes24.com/product/goods/118755085" },
+  // ---- 추가 (짧은 책·벽돌책·베스트셀러 후보) ----
+  { title: "백 명 버튼", author: "김동식", pub: "위즈덤하우스", pages: 68, note: "악마의 버튼이 부른 초단편 괴담", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=314830212" },
+  { title: "개를 데리고 다니는 여인", author: "안톤 체호프", pub: "문학동네", pages: 76, note: "휴양지에서 시작된 체호프의 사랑", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=83644916" },
+  { title: "외투", author: "니콜라이 고골", pub: "문학동네", pages: 80, note: "새 외투에 삶을 건 하급 관리", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=13770132" },
+  { title: "날개", author: "이상", pub: "위즈덤하우스", pages: 88, note: "박제가 된 천재의 내면 독백", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=397021020" },
+  { title: "집착", author: "아니 에르노", pub: "문학동네", pages: 88, note: "질투에 사로잡힌 나를 해부하다", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=291064784" },
+  { title: "남편의 아름다움", author: "앤 카슨", pub: "한겨레출판", pages: 204, note: "탱고 29편으로 쓴 허구의 에세이", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=353241663" },
+  { title: "친애하는 은둔자에게", author: "조준호", pub: "날", pages: 208, note: "의사 가운을 벗은 청년의 은둔기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=404228769" },
+  { title: "내 인생이 왜 당신 마음에 들어야 합니까", author: "김경일", pub: "퍼스트펭귄", pages: 256, note: "남의 시선 말고 내 삶을 묻다", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=401395645" },
+  { title: "박완서의 낱말들", author: "박완서", pub: "웅진지식하우스", pages: 264, note: "박완서 작품 속 낱말 사전", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=401813692" },
+  { title: "악의", author: "히가시노 게이고", pub: "현대문학", pages: 416, note: "가가 형사 시리즈 세 번째 추리극", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=198223504" },
+  { title: "인 더 메가처치", author: "아사이 료", pub: "은행나무", pages: 544, note: "덕질이 신앙이 된 세 사람 이야기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=398957541" },
+  { title: "시스터펑크 유니언", author: "정보라·김초엽 외", pub: "현대문학", pages: 556, note: "한일 작가 16인의 SF 앤솔러지", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=405410650" },
+  { title: "칵테일을 마시는 철학자들", author: "세라 베이크웰", pub: "다산초당", pages: 640, note: "실존주의 철학자들의 삶과 사상", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=399460405" },
+  { title: "살아 있다는 것은 무엇인가", author: "박문호", pub: "오아시스", pages: 656, note: "세포부터 노화까지 40억 년 생명사", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=404318892" },
+  { title: "꿈꾸는 책들의 도시", author: "발터 뫼어스", pub: "들녘", pages: 720, note: "목숨 걸고 읽는 책들의 판타지", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=44292503" },
+  { title: "생각에 관한 생각", author: "대니얼 카너먼", pub: "김영사", pages: 728, note: "빠른 생각과 느린 생각의 심리학", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=140135544" },
+  { title: "특이점이 온다", author: "레이 커즈와일", pub: "김영사", pages: 852, note: "기술이 인간을 넘어서는 미래", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=360727582" },
+  // ---- 추가 (시집·한국 근현대·세계고전·벽돌책) ----
+  { title: "이 시대의 사랑", author: "최승자", pub: "문학과지성사", pages: 96, note: "고통을 정면으로 노래한 첫 시집", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=116012" },
+  { title: "사슴", author: "백석", pub: "소와다리", pages: 88, note: "평안도 말로 그린 고향의 풍경", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=76625736" },
+  { title: "뒹구는 돌은 언제 잠 깨는가", author: "이성복", pub: "문학과지성사", pages: 122, note: "병든 시대와 가족을 응시한 첫 시집", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=42038" },
+  { title: "구관조 씻기기", author: "황인찬", pub: "민음사", pages: 132, note: "투명하고 담백한 언어의 첫 시집", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=21662109" },
+  { title: "당신의 이름을 지어다가 며칠은 먹었다", author: "박준", pub: "문학동네", pages: 144, note: "가난과 사랑을 다정히 적은 시", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=21706347" },
+  { title: "슬픔이 기쁨에게", author: "정호승", pub: "창비", pages: 144, note: "슬픔을 끌어안는 위로의 시편", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=49716616" },
+  { title: "입 속의 검은 잎", author: "기형도", pub: "문학과지성사", pages: 146, note: "청춘의 불안을 담은 유고 시집", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=122785" },
+  { title: "여름 언덕에서 배운 것", author: "안희연", pub: "창비", pages: 152, note: "상실 뒤에도 살아가는 법을 묻다", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=246821032" },
+  { title: "서랍에 저녁을 넣어 두었다", author: "한강", pub: "문학과지성사", pages: 168, note: "노벨상 작가의 고요한 첫 시집", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=33355947" },
+  { title: "김소월 시집 진달래꽃", author: "김소월", pub: "알에이치코리아", pages: 232, note: "이별과 그리움의 민요조 서정시", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=235694170" },
+  { title: "하늘과 바람과 별과 詩 (초판본)", author: "윤동주", pub: "소와다리", pages: 256, note: "부끄럼 없는 삶을 꿈꾼 청년의 시", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=72369420" },
+  { title: "흰", author: "한강", pub: "문학동네", pages: 180, note: "흰 것들로 써 내려간 애도의 기록", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=360994667" },
+  { title: "백의 그림자", author: "황정은", pub: "창비", pages: 192, note: "철거 앞 전자상가, 두 사람의 사랑", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=287791901" },
+  { title: "구의 증명", author: "최진영", pub: "은행나무", pages: 192, note: "죽음도 갈라놓지 못한 극한의 사랑", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=315614621" },
+  { title: "죽이고 싶은 아이", author: "이꽃님", pub: "우리학교", pages: 200, note: "친구의 죽음과 엇갈린 진실", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=272118388" },
+  { title: "한국이 싫어서", author: "장강명", pub: "민음사", pages: 204, note: "한국을 떠나 호주로 간 계나 이야기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=59713793" },
+  { title: "완득이", author: "김려령", pub: "창비", pages: 211, note: "반항아 완득이와 괴짜 담임의 성장기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=1935594" },
+  { title: "살인자의 기억법", author: "김영하", pub: "복복서가", pages: 224, note: "기억을 잃어가는 살인범의 마지막 싸움", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=249404000" },
+  { title: "우리들의 일그러진 영웅", author: "이문열", pub: "알에이치코리아", pages: 264, note: "교실 독재자 엄석대와 권력의 민낯", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=246280635" },
+  { title: "바깥은 여름", author: "김애란", pub: "문학동네", pages: 272, note: "상실 뒤에 남겨진 이들의 단편집", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=111454737" },
+  { title: "채식주의자", author: "한강", pub: "창비", pages: 276, note: "육식을 거부한 영혜와 세 사람의 시선", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=291370219" },
+  { title: "아몬드", author: "손원평", pub: "다즐링", pages: 314, note: "감정을 못 느끼는 소년의 성장", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=318933239" },
+  { title: "엄마를 부탁해", author: "신경숙", pub: "창비", pages: 320, note: "실종된 엄마를 찾으며 깨닫는 사랑", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=2727875" },
+  { title: "그 많던 싱아는 누가 다 먹었을까", author: "박완서", pub: "웅진지식하우스", pages: 356, note: "개성 소녀가 겪은 일제와 전쟁의 기억", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=369310737" },
+  { title: "우리들의 행복한 시간", author: "공지영", pub: "해냄", pages: 364, note: "사형수와 상처 입은 여자의 만남", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=90023663" },
+  { title: "투명인간", author: "성석제", pub: "창비", pages: 372, note: "착한 사내 만수로 본 한국 현대사", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=42445860" },
+  { title: "장마", author: "윤흥길", pub: "민음사", pages: 375, note: "전쟁이 갈라놓은 두 할머니의 화해", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=592823" },
+  { title: "광장 / 구운몽", author: "최인훈", pub: "문학과지성사", pages: 382, note: "남도 북도 거부한 이명준의 선택", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=52010705" },
+  { title: "무진기행", author: "김승옥", pub: "민음사", pages: 405, note: "안개 낀 고향에서 마주한 무기력", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=965741" },
+  { title: "난장이가 쏘아올린 작은 공", author: "조세희", pub: "이성과힘", pages: 416, note: "철거민 난장이 가족의 슬픈 연작", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=334157624" },
+  { title: "서편제", author: "이청준", pub: "문학과지성사", pages: 418, note: "소리를 위해 눈을 멀게 한 한의 길", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=26051060" },
+  { title: "원미동 사람들", author: "양귀자", pub: "쓰다", pages: 428, note: "부천 원미동 소시민들의 연작소설", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=21874073" },
+  { title: "새의 선물", author: "은희경", pub: "문학동네", pages: 440, note: "조숙한 열두 살 소녀가 본 어른 세계", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=295486068" },
+  { title: "희망", author: "양귀자", pub: "쓰다", pages: 600, note: "1980년대 여관집 아들의 성장과 희망", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=244151572" },
+  { title: "어린 왕자", author: "앙투안 드 생텍쥐페리", pub: "열린책들", pages: 136, note: "사막에서 만난 작은 왕자와의 우정", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=68534943" },
+  { title: "자기만의 방", author: "버지니아 울프", pub: "민음사", pages: 168, note: "여성과 글쓰기에 관한 고전 에세이", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=97899246" },
+  { title: "설국", author: "가와바타 야스나리", pub: "민음사", pages: 176, note: "눈의 고장에서 피어난 덧없는 사랑", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=328730" },
+  { title: "고도를 기다리며", author: "사뮈엘 베케트", pub: "민음사", pages: 180, note: "오지 않는 고도를 기다리는 두 사람", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=256532" },
+  { title: "세일즈맨의 죽음", author: "아서 밀러", pub: "민음사", pages: 188, note: "꿈을 좇다 무너진 가장의 비극", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=4567207" },
+  { title: "시계태엽 오렌지", author: "앤서니 버지스", pub: "민음사", pages: 232, note: "폭력 소년과 강요된 교화", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=536624" },
+  { title: "지하로부터의 수기", author: "표도르 도스토옙스키", pub: "민음사", pages: 232, note: "지하 생활자의 날 선 독백", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=6552562" },
+  { title: "햄릿", author: "윌리엄 셰익스피어", pub: "민음사", pages: 248, note: "복수 앞에서 망설이는 덴마크 왕자", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=168036" },
+  { title: "이방인", author: "알베르 카뮈", pub: "민음사", pages: 270, note: "태양 아래 살인을 저지른 무심한 남자", url: "https://www.yes24.com/product/goods/4827613" },
+  { title: "젊은 베르테르의 슬픔", author: "요한 볼프강 폰 괴테", pub: "민음사", pages: 276, note: "이룰 수 없는 사랑에 무너진 청년", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=187464" },
+  { title: "변신·시골의사", author: "프란츠 카프카", pub: "민음사", pages: 288, note: "어느 아침 벌레로 변한 세일즈맨", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=60471" },
+  { title: "제5도살장", author: "커트 보니것", pub: "문학동네", pages: 288, note: "시간 속을 떠도는 전쟁 포로", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=74921149" },
+  { title: "수레바퀴 아래서", author: "헤르만 헤세", pub: "민음사", pages: 292, note: "입시 압박에 짓눌린 소년의 비극", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=292110" },
+  { title: "위대한 개츠비", author: "F. 스콧 피츠제럴드", pub: "민음사", pages: 308, note: "옛사랑을 좇은 부자의 꿈과 몰락", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=417997" },
+  { title: "호밀밭의 파수꾼", author: "J.D. 샐린저", pub: "민음사", pages: 320, note: "학교를 뛰쳐나온 소년의 뉴욕 방황", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=308822243" },
+  { title: "파리대왕", author: "윌리엄 골딩", pub: "민음사", pages: 328, note: "무인도에 고립된 소년들의 야만", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=344077" },
+  { title: "80일간의 세계 일주", author: "쥘 베른", pub: "열린책들", pages: 344, note: "내기를 건 신사의 세계 일주 모험", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=8310116" },
+  { title: "등대로", author: "버지니아 울프", pub: "민음사", pages: 372, note: "등대 여행을 둘러싼 한 가족의 시간", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=36136095" },
+  { title: "달과 6펜스", author: "서머싯 몸", pub: "민음사", pages: 376, note: "모든 걸 버리고 그림을 택한 화가", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=237763" },
+  { title: "삼체 2부: 암흑의 숲", author: "류츠신", pub: "자음과모음", pages: 716, note: "면벽자와 외계 문명의 두뇌 싸움", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=289126625" },
+  { title: "아인슈타인 삶과 우주", author: "월터 아이작슨", pub: "까치", pages: 736, note: "천재 물리학자의 삶과 생각", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=1000369" },
+  { title: "우주의 구조", author: "브라이언 그린", pub: "승산", pages: 747, note: "시간과 공간의 정체를 묻는 물리학", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=570453" },
+  { title: "소피의 세계", author: "요슈타인 가아더", pub: "현암사", pages: 748, note: "소설로 떠나는 서양 철학 여행", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=73429011" },
+  { title: "일론 머스크", author: "월터 아이작슨", pub: "21세기북스", pages: 760, note: "머스크의 삶을 파헤친 공식 전기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=323119574" },
+  { title: "정의론", author: "존 롤스", pub: "이학사", pages: 782, note: "공정으로서의 정의를 세운 고전", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=404505" },
+  { title: "문명의 붕괴", author: "재레드 다이아몬드", pub: "김영사", pages: 788, note: "사회는 왜 무너지고 또 살아남나", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=594674" },
+  { title: "삼체 3부: 사신의 영생", author: "류츠신", pub: "자음과모음", pages: 804, note: "인류 문명의 끝을 그린 SF 완결편", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=289126701" },
+  { title: "모비 딕", author: "허먼 멜빌", pub: "작가정신", pages: 808, note: "흰 고래를 쫓는 집념의 항해", url: "https://www.yes24.com/product/goods/125583152" },
+  { title: "21세기 자본", author: "토마 피케티", pub: "글항아리", pages: 820, note: "불평등의 역사를 데이터로 추적", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=44824482" },
+  { title: "지금 다시 계몽", author: "스티븐 핑커", pub: "사이언스북스", pages: 864, note: "이성과 과학이 이끈 진보의 기록", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=275091672" },
+  { title: "듄 1", author: "프랭크 허버트", pub: "황금가지", pages: 944, note: "사막 행성에서 펼쳐지는 SF 대서사", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=262972218" },
+  { title: "빈 서판", author: "스티븐 핑커", pub: "사이언스북스", pages: 944, note: "인간 본성을 둘러싼 논쟁", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=468476" },
+  { title: "신곡", author: "단테 알리기에리", pub: "열린책들", pages: 1088, note: "지옥에서 천국까지 영혼의 순례", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=291738750" },
+  { title: "괴델, 에셔, 바흐", author: "더글러스 호프스태터", pub: "까치", pages: 1128, note: "수학·미술·음악으로 본 마음의 원리", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=113285054" },
+  { title: "제2차 세계대전", author: "앤터니 비버", pub: "글항아리", pages: 1288, note: "전쟁 전체를 한 권에 담은 역사", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=104419109" },
+  { title: "러셀 서양철학사", author: "버트런드 러셀", pub: "을유문화사", pages: 1308, note: "고대부터 현대까지 철학의 흐름", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=258990391" },
+  { title: "우리 본성의 선한 천사", author: "스티븐 핑커", pub: "사이언스북스", pages: 1408, note: "폭력은 어떻게 줄어들었나", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=45391321" },
+  // ---- 추가 (100~399쪽, 서점 쪽수 확인) ----
+  { title: "어떻게 살 것인가", author: "유시민", pub: "생각의길", pages: 344, note: "잘 사는 삶이 뭔지 묻는 에세이", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=23981862" },
+  { title: "나는 나로 살기로 했다", author: "김수현", pub: "마음의숲", pages: 288, note: "나답게 사는 법을 담은 에세이", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=97625578" },
+  { title: "오이디푸스 왕", author: "소포클레스", pub: "민음사", pages: 387, note: "운명을 피하려다 마주한 비극", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=4478861" },
+  { title: "지구에서 한아뿐", author: "정세랑", pub: "난다", pages: 228, note: "외계인이 된 남자친구와의 사랑", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=198048203" },
+  { title: "저주토끼", author: "정보라", pub: "래빗홀", pages: 356, note: "기묘하고 서늘한 저주 이야기들", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=314843468" },
+  { title: "대도시의 사랑법", author: "박상영", pub: "창비", pages: 344, note: "서울에서 사랑하는 청춘 이야기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=195439115" },
+  { title: "체공녀 강주룡", author: "박서련", pub: "한겨레출판", pages: 276, note: "지붕 위에 올라 싸운 여성 노동자", url: "https://www.yes24.com/product/goods/139777068" },
+  { title: "해가 지는 곳으로", author: "최진영", pub: "민음사", pages: 208, note: "재난 속에서 피어난 사랑", url: "https://www.yes24.com/product/goods/43504366" },
+  { title: "단순한 진심", author: "조해진", pub: "민음사", pages: 268, note: "입양된 여자가 뿌리를 찾는 여정", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=197115168" },
+  { title: "므레모사", author: "김초엽", pub: "현대문학", pages: 204, note: "재난 마을로 떠난 기묘한 여행", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=285549774" },
+  { title: "이상한 과자 가게 전천당 1", author: "히로시마 레이코", pub: "길벗스쿨", pages: 148, note: "소원을 들어주는 신비한 과자 가게", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=196104762" },
+  { title: "불편한 편의점", author: "김호연", pub: "나무옆의자", pages: 268, note: "노숙인 점원이 바꾼 동네 편의점", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=269428498" },
+  { title: "달러구트 꿈 백화점", author: "이미예", pub: "팩토리나인", pages: 300, note: "잠든 손님에게 꿈을 파는 백화점", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=245127051" },
+  { title: "아버지의 해방일지", author: "정지아", pub: "창비", pages: 268, note: "빨치산 아버지 장례식의 사흘", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=300485187" },
+  { title: "연금술사", author: "파울로 코엘료", pub: "북다", pages: 316, note: "보물을 찾아 사막을 건너는 양치기", url: "https://www.yes24.com/product/goods/192872043" },
+  { title: "쇼코의 미소", author: "최은영", pub: "문학동네", pages: 296, note: "국경 너머 우정과 엇갈린 마음들", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=86799537" },
+  { title: "일의 기쁨과 슬픔", author: "장류진", pub: "창비", pages: 236, note: "평범한 직장인들의 일과 돈 이야기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=212921347" },
+  { title: "보건교사 안은영", author: "정세랑", pub: "민음사", pages: 280, note: "젤리 괴물과 싸우는 보건 선생님", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=71643531" },
+  { title: "위저드 베이커리", author: "구병모", pub: "창비", pages: 256, note: "마법 빵집에 숨어든 소년의 이야기", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=291031831" },
+  { title: "긴긴밤", author: "루리", pub: "문학동네", pages: 144, note: "코뿔소와 펭귄의 길고 먼 여정", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=263027170" },
+  { title: "마당을 나온 암탉", author: "황선미", pub: "사계절", pages: 200, note: "알을 품고 싶어 마당을 나온 암탉", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=349172" },
+  { title: "여행의 이유", author: "김영하", pub: "복복서가", pages: 260, note: "작가가 들려주는 여행의 의미", url: "https://www.aladin.co.kr/shop/wproduct.aspx?ItemId=337633173" },
+];
+
+if (!window.THREE) {
+  document.getElementById('startSub').innerHTML = '3D 화면을 불러오지 못했어요.<br>인터넷 연결을 확인하고 새로고침해 주세요.';
+  document.getElementById('startBtn').style.display = 'none';
+  throw new Error('three.js not loaded');
+}
+
+/* ---------- 게임 설정 (2D 버전과 같은 규칙) ---------- */
+const S = 1 / 45;              // 2D 픽셀 → 3D 미터
+const GRAVITY = 2300 * S;
+const JUMP_V = 760 * S;
+/* 속도 규칙
+   0~300쪽: 화면은 느리게, 쪽은 빠르게 (1초에 5쪽 → 1분이면 300쪽)
+   300쪽부터: 쪽은 느리게 (1초에 2쪽), 화면은 점점 빨라져서 400쪽에서 최고 속도 */
+const FAST_PPS = 5;
+const SLOW_PPS = 2;
+const SWITCH_AT = 300;
+const MAX_AT = 400;
+const START_SPEED = 300;       // 달리는 속도: 처음 (2D 픽셀/초)
+const MAX_SPEED = 700;         // 달리는 속도: 최고
+let meters = 0, speedUpAt = -99;
+let score = 0, items = [], itemS = 0, combo = 0, comboT = 0;   // 모은 종이 = 점수
+function speedProgress() {
+  return Math.min(1, Math.max(0, (meters - SWITCH_AT) / (MAX_AT - SWITCH_AT)));
+}
+
+/* 도서관 크기 */
+const CEIL = 6.4;              // 천장 높이
+const AISLE = 2.6;             // 통로 절반 폭 (책장 앞면 위치)
+const SEG_L = 6;               // 책장 한 구간 길이
+const NSEG = 10;
+const SPAWN_AHEAD = 48;
+
+/* ---------- 도구 ---------- */
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+function seeded(seed) {
+  let s = (Math.abs(Math.floor(seed)) * 9301 + 49297) % 233280 || 1;
+  return () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+}
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return [c, c.getContext('2d')]; }
+function shade(hex, f) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, (n >> 16) * f), g = Math.min(255, (n >> 8 & 255) * f), b = Math.min(255, (n & 255) * f);
+  return `rgb(${r | 0},${g | 0},${b | 0})`;
+}
+
+/* ---------- 렌더러 ---------- */
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.25;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const MAX_ANISO = renderer.capabilities.getMaxAnisotropy();
+
+const scene = new THREE.Scene();
+const FOG = 0x1b1014;
+scene.background = new THREE.Color(FOG);
+scene.fog = new THREE.Fog(FOG, 9, 46);
+const camera = new THREE.PerspectiveCamera(62, 1, 0.1, 80);
+let baseFov = 62;
+
+function tex(cv, repeat) {
+  const t = new THREE.CanvasTexture(cv);
+  t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
+  if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
+/* ---------- 책 텍스처 아틀라스 (책등 32종 + 종이 + 나무) ---------- */
+const A = 1024, SPW = 64, SPH = 400;
+const SPINE_COLORS = ['#b8432f', '#2f6f8f', '#d9a441', '#4f8a4a', '#7d4a86', '#33507a', '#c46a2b', '#8c2f4a',
+  '#2e7d74', '#5b2a1e', '#1f3d5a', '#3c5a2e', '#6a1f2f', '#2b2b3d', '#8a6a3a', '#a33b2b', '#40566b', '#6b3a5a',
+  '#2a4a3a', '#9b7b4b', '#4a2a1a', '#7a2020', '#204060', '#556b2f', '#3b2f2f', '#8b4513', '#483d8b', '#2f4f4f',
+  '#800000', '#b8860b', '#1d2a5a', '#5f8e9e'];
+
+function drawSpine(c, x0, y0, col, r) {
+  const w = SPW, h = SPH - 30;
+  c.fillStyle = col; c.fillRect(x0, y0, w, SPH);
+  // 가죽 결
+  for (let i = 0; i < 320; i++) {
+    c.fillStyle = r() < .5 ? 'rgba(0,0,0,.09)' : 'rgba(255,255,255,.05)';
+    c.fillRect(x0 + r() * w, y0 + r() * h, 1 + r() * 2, 1 + r() * 2);
+  }
+  const gold = r() < .8 ? '#e9c46c' : '#ddd3c0';
+  const style = Math.floor(r() * 3);
+  if (style === 0) {
+    c.fillStyle = gold;
+    c.fillRect(x0, y0 + 14, w, 5); c.fillRect(x0, y0 + 23, w, 2);
+    c.fillRect(x0, y0 + h - 27, w, 2); c.fillRect(x0, y0 + h - 19, w, 5);
+  } else if (style === 1) {
+    for (let k = 0; k < 5; k++) {
+      const y = y0 + 30 + k * ((h - 70) / 4);
+      c.fillStyle = 'rgba(0,0,0,.4)'; c.fillRect(x0, y + 5, w, 3);
+      c.fillStyle = 'rgba(255,255,255,.2)'; c.fillRect(x0, y, w, 4);
+      c.fillStyle = gold; c.fillRect(x0, y - 3, w, 1.5); c.fillRect(x0, y + 10, w, 1.5);
+    }
+  } else {
+    c.fillStyle = shade(col, r() < .5 ? .55 : 1.45); c.fillRect(x0, y0 + h * .16, w, h * .12);
+    c.fillRect(x0, y0 + h * .86, w, h * .05);
+  }
+  // 제목 라벨 + 글자 흉내
+  const ly = y0 + 70 + r() * 70, lh = 70 + r() * 60;
+  let ink = gold;
+  if (r() < .55) {
+    const light = r() < .5;
+    c.fillStyle = light ? 'rgba(245,232,205,.93)' : 'rgba(22,14,10,.78)';
+    c.fillRect(x0 + 9, ly, w - 18, lh);
+    c.strokeStyle = gold; c.lineWidth = 1.5; c.strokeRect(x0 + 12, ly + 3, w - 24, lh - 6);
+    ink = light ? '#2a1a10' : gold;
+  }
+  c.fillStyle = ink;
+  for (let gy = ly + 10; gy < ly + lh - 14; gy += 15) {
+    const gw = 12 + r() * 6; c.fillRect(x0 + w / 2 - gw / 2, gy, gw, 9 + r() * 2);
+  }
+  // 출판사 마크
+  c.fillStyle = gold;
+  if (r() < .6) { c.beginPath(); c.arc(x0 + w / 2, y0 + h - 50, 6, 0, Math.PI * 2); c.fill(); }
+  // 둥근 책등 음영
+  const g = c.createLinearGradient(x0, 0, x0 + w, 0);
+  g.addColorStop(0, 'rgba(0,0,0,.5)'); g.addColorStop(.28, 'rgba(255,255,255,.13)');
+  g.addColorStop(.5, 'rgba(255,255,255,.04)'); g.addColorStop(1, 'rgba(0,0,0,.55)');
+  c.fillStyle = g; c.fillRect(x0, y0, w, h);
+  // 위아래 닳은 자국
+  c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(x0, y0, w, 3); c.fillRect(x0, y0 + h - 3, w, 3);
+  // 표지용 단색 영역
+  c.fillStyle = shade(col, .85); c.fillRect(x0, y0 + h, w, 30);
+}
+
+function drawWood(c, x0, y0, w, h, r, base) {
+  c.fillStyle = base; c.fillRect(x0, y0, w, h);
+  for (let i = 0; i < 110; i++) {
+    const y = y0 + r() * h, ph = r() * 6, fr = 40 + r() * 80, amp = 1 + r() * 3;
+    c.strokeStyle = r() < .65 ? `rgba(30,15,5,${.08 + r() * .18})` : `rgba(255,220,170,${.04 + r() * .07})`;
+    c.lineWidth = .6 + r() * 1.6;
+    c.beginPath();
+    for (let x = 0; x <= w; x += 8) {
+      const yy = y + Math.sin(x / fr + ph) * amp;
+      x === 0 ? c.moveTo(x0 + x, yy) : c.lineTo(x0 + x, yy);
+    }
+    c.stroke();
+  }
+  for (let k = 0; k < 3; k++) {
+    const kx = x0 + r() * w, ky = y0 + r() * h;
+    c.fillStyle = 'rgba(40,20,8,.35)';
+    c.beginPath(); c.ellipse(kx, ky, 10 + r() * 8, 3 + r() * 2, 0, 0, Math.PI * 2); c.fill();
+  }
+}
+
+const [atlasCv, ac] = mk(A, A);
+{
+  const ar = seeded(42);
+  SPINE_COLORS.forEach((col, k) => drawSpine(ac, (k % 16) * SPW, Math.floor(k / 16) * SPH, col, ar));
+  ac.fillStyle = '#ecdfc0'; ac.fillRect(0, 800, 256, 224);
+  for (let y = 800; y < 1024; y += 2) { ac.fillStyle = `rgba(120,90,50,${.08 + ar() * .16})`; ac.fillRect(0, y, 256, 1); }
+  drawWood(ac, 256, 800, 768, 224, ar, '#7b5233');
+}
+const atlasTex = tex(atlasCv);
+const atlasMat = new THREE.MeshStandardMaterial({ map: atlasTex, vertexColors: true, roughness: .78, metalness: 0 });
+
+const uvr = (x0, y0, x1, y1) => [(x0 + .5) / A, 1 - (y1 - .5) / A, (x1 - .5) / A, 1 - (y0 + .5) / A];
+const SPINE_UV = [], SPINE_UV_R = [], COVER_UV = [];
+for (let k = 0; k < 32; k++) {
+  const x0 = (k % 16) * SPW, y0 = Math.floor(k / 16) * SPH;
+  SPINE_UV[k] = uvr(x0 + 1, y0 + 1, x0 + SPW - 1, y0 + SPH - 31);
+  SPINE_UV_R[k] = [...SPINE_UV[k], 1];
+  COVER_UV[k] = uvr(x0 + 14, y0 + SPH - 24, x0 + SPW - 14, y0 + SPH - 8);
+}
+const PAGES = uvr(6, 806, 250, 1018);
+const WOOD = uvr(262, 806, 1018, 1018);
+const WOOD_R = [...WOOD, 1];
+
+/* 책 한 권의 면별 텍스처 */
+function bookUV(k, mode, side) {
+  const sp = SPINE_UV[k], spR = SPINE_UV_R[k], cv = COVER_UV[k];
+  if (mode === 'shelf') { const f = side < 0 ? 0 : 1; const a = [cv, cv, PAGES, PAGES, cv, cv]; a[f] = sp; a[1 - f] = PAGES; return a; }
+  if (mode === 'shelfLying') { const f = side < 0 ? 0 : 1; const a = [PAGES, PAGES, cv, cv, PAGES, PAGES]; a[f] = spR; return a; }
+  if (mode === 'upright') return [cv, cv, PAGES, PAGES, sp, PAGES];
+  return [PAGES, PAGES, cv, cv, spR, PAGES]; // lying
+}
+
+/* ---------- 상자들을 한 덩어리로 합치는 도구 ---------- */
+const FACES = [
+  [[1, 0, 0], [[1, -1, 1], [1, -1, -1], [1, 1, -1], [1, 1, 1]]],
+  [[-1, 0, 0], [[-1, -1, -1], [-1, -1, 1], [-1, 1, 1], [-1, 1, -1]]],
+  [[0, 1, 0], [[-1, 1, 1], [1, 1, 1], [1, 1, -1], [-1, 1, -1]]],
+  [[0, -1, 0], [[-1, -1, -1], [1, -1, -1], [1, -1, 1], [-1, -1, 1]]],
+  [[0, 0, 1], [[-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]]],
+  [[0, 0, -1], [[1, -1, -1], [-1, -1, -1], [-1, 1, -1], [1, 1, -1]]],
+];
+const _v = new THREE.Vector3(), _n = new THREE.Vector3(), _m = new THREE.Matrix4(), _e = new THREE.Euler();
+class Builder {
+  constructor() { this.p = []; this.n = []; this.u = []; this.c = []; this.ix = []; this.v = 0; }
+  box(x, y, z, w, h, d, uvs, col, rx, ry, rz) {
+    if (typeof uvs[0] === 'number') uvs = [uvs, uvs, uvs, uvs, uvs, uvs];
+    const rot = rx || ry || rz;
+    if (rot) _m.makeRotationFromEuler(_e.set(rx || 0, ry || 0, rz || 0));
+    for (let f = 0; f < 6; f++) {
+      const R = uvs[f]; if (!R) continue;
+      const [nn, cs] = FACES[f];
+      _n.set(nn[0], nn[1], nn[2]); if (rot) _n.applyMatrix4(_m);
+      for (let k = 0; k < 4; k++) {
+        _v.set(cs[k][0] * w / 2, cs[k][1] * h / 2, cs[k][2] * d / 2); if (rot) _v.applyMatrix4(_m);
+        this.p.push(x + _v.x, y + _v.y, z + _v.z); this.n.push(_n.x, _n.y, _n.z); this.c.push(col[0], col[1], col[2]);
+      }
+      const [u0, v0, u1, v1, rt] = R;
+      if (rt) this.u.push(u0, v1, u0, v0, u1, v0, u1, v1);
+      else this.u.push(u0, v0, u1, v0, u1, v1, u0, v1);
+      const v = this.v; this.ix.push(v, v + 1, v + 2, v, v + 2, v + 3); this.v += 4;
+    }
+  }
+  geometry() {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(this.p, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.n, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.u, 2));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(this.c, 3));
+    g.setIndex(this.ix);
+    g.computeBoundingSphere();
+    return g;
+  }
+}
+const gray = b => [b, b, b];
+
+/* ---------- 도서관 책장 구간 ---------- */
+function buildShelfSide(B, side, r) {
+  const s = side, L = SEG_L;
+  const back = AISLE + 0.55;
+  B.box(s * (back + .04), CEIL / 2, -L / 2, .08, CEIL, L, WOOD, gray(.28));                 // 뒤판
+  B.box(s * (AISLE + .3), .09, -L / 2, .62, .18, L, WOOD, gray(.45));                       // 받침
+  B.box(s * (AISLE + .3), 5.62, -L / 2, .72, .2, L, WOOD, gray(.5));                       // 윗장식
+  B.box(s * (AISLE + .26), 5.8, -L / 2, .6, .16, L, WOOD, gray(.38));
+  for (const z of [0, -L / 2]) B.box(s * (AISLE + .275), 2.9, z, .58, 5.6, .13, WOOD_R, gray(.62)); // 기둥
+  for (let k = 0; k <= 6; k++) B.box(s * (AISLE + .28), .18 + k * .88, -L / 2, .56, .055, L, WOOD, gray(.7)); // 선반
+  for (let k = 1; k <= 6; k++) for (const pz of [-L / 4, -3 * L / 4]) if (r() < .55)                         // 놋쇠 이름표
+    B.box(s * (AISLE - .006), .18 + k * .88, pz, .012, .036, .17, PAGES, [1.3, .98, .5]);
+  for (let row = 0; row < 6; row++) {
+    const yb = .18 + row * .88 + .0275;
+    for (let sec = 0; sec < 2; sec++) {
+      let z = -sec * L / 2 - .075;
+      const ze = -(sec + 1) * L / 2 + .075;
+      if (r() < .1) z -= .2 + r() * .5;
+      while (z > ze) {
+        const q = r();
+        if (q < .04) { z -= .12 + r() * .25; continue; }
+        if (q < .075 && z - .42 > ze) {          // 눕혀 쌓은 책
+          const ww = .28 + r() * .08; let y = yb; const m = 2 + Math.floor(r() * 4);
+          for (let i = 0; i < m; i++) {
+            const t = .05 + r() * .05, dd = .34 + r() * .1, k = Math.floor(r() * 32);
+            B.box(s * (back - .04 - dd / 2), y + t / 2, z - ww / 2, dd, t, ww - r() * .04,
+              bookUV(k, 'shelfLying', s), gray(.75 + r() * .3), 0, (r() - .5) * .14, 0);
+            y += t;
+          }
+          z -= ww + .03; continue;
+        }
+        const t = .055 + r() * .08, h = .48 + r() * .3, dd = .33 + r() * .13, k = Math.floor(r() * 32);
+        if (z - t < ze) break;
+        const x = s * (back - .04 - dd / 2 - r() * .03);
+        if (r() < .035 && z - t - .3 > ze) {      // 기대 놓인 책
+          const a = .14 + r() * .14;
+          B.box(x, yb + h / 2 * Math.cos(a) + t / 2 * Math.sin(a), z - t / 2 - Math.sin(a) * h / 2, dd, h, t,
+            bookUV(k, 'shelf', s), gray(.75 + r() * .3), -a, 0, 0);
+          z -= t + Math.sin(a) * h + .01; continue;
+        }
+        B.box(x, yb + h / 2, z - t / 2, dd, h, t, bookUV(k, 'shelf', s), gray(.72 + r() * .33));
+        z -= t + .004;
+      }
+    }
+  }
+}
+
+function buildWindowSide(B, side) {
+  const s = side, L = SEG_L;
+  B.box(s * (AISLE + .18), CEIL / 2, -L / 2, .32, CEIL, L, PAGES, [.5, .44, .38]);        // 회벽
+  B.box(s * (AISLE - .03), .6, -L / 2, .07, 1.2, L, WOOD, gray(.55));                       // 징두리 판벽
+  B.box(s * (AISLE - .06), 1.22, -L / 2, .12, .05, L, WOOD, gray(.7));
+  for (const z of [-.25, -L + .25]) B.box(s * (AISLE - .08), CEIL / 2, z, .3, CEIL, .5, WOOD_R, gray(.48)); // 기둥
+  B.box(s * (AISLE - .12), 1.27, -L / 2, .3, .07, 2.3, WOOD, gray(.75));                   // 창턱
+  B.box(s * (AISLE - .05), CEIL - .45, -L / 2, .3, .22, L, WOOD, gray(.42));               // 몰딩
+}
+
+function buildSegment(seed, kind) {
+  const r = seeded(seed), B = new Builder();
+  for (const side of [-1, 1]) {
+    if ((kind === 'winL' && side === -1) || (kind === 'winR' && side === 1)) buildWindowSide(B, side);
+    else buildShelfSide(B, side, r);
+  }
+  B.box(0, CEIL - .14, 0, AISLE * 2 + 1.2, .28, .34, WOOD, gray(.42));   // 천장 들보
+  return B.geometry();
+}
+
+const segGeos = { shelf: [], winL: [], winR: [] };
+for (let v = 0; v < 4; v++) segGeos.shelf.push(buildSegment(101 + v * 17, 'shelf'));
+for (let v = 0; v < 2; v++) { segGeos.winL.push(buildSegment(503 + v * 29, 'winL')); segGeos.winR.push(buildSegment(707 + v * 31, 'winR')); }
+
+/* ---------- 작은 텍스처들 ---------- */
+const glowTex = (() => {
+  const [cv, c] = mk(128, 128);
+  const g = c.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(.25, 'rgba(255,255,255,.55)');
+  g.addColorStop(.6, 'rgba(255,255,255,.12)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 128, 128); return tex(cv);
+})();
+const starTex = (() => {
+  const [cv, c] = mk(64, 64);
+  const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,.7)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 64, 64);
+  c.fillStyle = '#fff'; const r = 14;
+  c.beginPath(); c.moveTo(32, 32 - r * 2); c.quadraticCurveTo(32, 32, 32 + r * 2, 32);
+  c.quadraticCurveTo(32, 32, 32, 32 + r * 2); c.quadraticCurveTo(32, 32, 32 - r * 2, 32);
+  c.quadraticCurveTo(32, 32, 32, 32 - r * 2); c.fill();
+  return tex(cv);
+})();
+const wingTex = (() => {
+  const [cv, c] = mk(256, 256);
+  const L = 230; c.translate(248, 200);
+  const path = () => {
+    c.beginPath(); c.moveTo(0, 0);
+    c.bezierCurveTo(-L * .15, -L * .6, -L * .85, -L * .85, -L, -L * .4);
+    c.bezierCurveTo(-L * 1.02, -L * .08, -L * .5, L * .06, 0, 0);
+  };
+  const g = c.createRadialGradient(0, 0, 10, -L * .5, -L * .4, L * .9);
+  g.addColorStop(0, 'rgba(255,240,250,.9)'); g.addColorStop(.5, 'rgba(190,230,255,.55)'); g.addColorStop(1, 'rgba(160,200,255,.35)');
+  path(); c.fillStyle = g; c.fill();
+  c.strokeStyle = 'rgba(255,255,255,.95)'; c.lineWidth = 4; c.stroke();
+  c.strokeStyle = 'rgba(255,255,255,.65)'; c.lineWidth = 2.2;
+  for (const [a, b, e, f] of [[-.45, -.55, -.82, -.45], [-.35, -.2, -.75, -.15], [-.4, -.7, -.6, -.72]]) {
+    c.beginPath(); c.moveTo(-2, -1); c.quadraticCurveTo(L * a, L * b, L * e, L * f); c.stroke();
+  }
+  c.fillStyle = 'rgba(255,255,255,.8)';
+  c.beginPath(); c.arc(-L * .62, -L * .42, L * .05, 0, Math.PI * 2); c.fill();
+  c.beginPath(); c.arc(-L * .4, -L * .5, L * .03, 0, Math.PI * 2); c.fill();
+  return tex(cv);
+})();
+const windowTex = (() => {
+  const [cv, c] = mk(256, 512);
+  const arch = (inset) => {
+    c.beginPath(); c.moveTo(inset, 512 - inset); c.lineTo(inset, 128);
+    c.arc(128, 128, 128 - inset, Math.PI, 0); c.lineTo(256 - inset, 512 - inset); c.closePath();
+  };
+  arch(0); c.fillStyle = '#3a2416'; c.fill();
+  const g = c.createLinearGradient(0, 20, 0, 500);
+  g.addColorStop(0, '#f4fbff'); g.addColorStop(.5, '#cfe6f7'); g.addColorStop(1, '#9cc4de');
+  arch(14); c.fillStyle = g; c.fill();
+  // 구름, 나무 실루엣
+  c.save(); arch(14); c.clip();
+  c.fillStyle = 'rgba(255,255,255,.6)';
+  for (const [x, y, rr] of [[60, 210, 30], [95, 200, 38], [130, 215, 26], [190, 300, 24], [215, 292, 30]]) { c.beginPath(); c.arc(x, y, rr, 0, Math.PI * 2); c.fill(); }
+  c.fillStyle = 'rgba(80,120,110,.45)';
+  for (let x = 0; x < 256; x += 22) { c.beginPath(); c.arc(x + 8, 470 - (x * 7 % 30), 30, 0, Math.PI * 2); c.fill(); }
+  c.restore();
+  // 창살
+  c.strokeStyle = '#3a2416'; c.lineWidth = 9;
+  c.beginPath(); c.moveTo(128, 0); c.lineTo(128, 512);
+  for (const y of [200, 300, 400]) { c.moveTo(0, y); c.lineTo(256, y); }
+  c.stroke();
+  c.lineWidth = 4; c.beginPath(); c.arc(128, 128, 60, Math.PI, 0); c.stroke();
+  return tex(cv);
+})();
+const shaftTex = (() => {
+  const [cv, c] = mk(64, 256);
+  const g = c.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, 'rgba(255,255,255,.9)'); g.addColorStop(.6, 'rgba(255,255,255,.35)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 64, 256);
+  c.globalCompositeOperation = 'destination-in';
+  const h = c.createLinearGradient(0, 0, 64, 0);
+  h.addColorStop(0, 'rgba(0,0,0,0)'); h.addColorStop(.25, 'rgba(0,0,0,1)'); h.addColorStop(.75, 'rgba(0,0,0,1)'); h.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = h; c.fillRect(0, 0, 64, 256);
+  return tex(cv);
+})();
+
+/* 나무 바닥 (판자가 달리는 방향으로 길게) */
+const FLOOR_TILE = 2.7;
+const floorCanvas = (() => {
+  const [cv, c] = mk(512, 512);
+  const r = seeded(11);
+  const plank = (x, y, w, len, seed) => {
+    const q = seeded(seed);
+    c.fillStyle = `hsl(${22 + q() * 9}, ${40 + q() * 14}%, ${19 + q() * 11}%)`; c.fillRect(x, y, w, len);
+    for (let k = 0; k < 16; k++) {
+      const gx = x + q() * w, fr = 25 + q() * 45, ph = q() * 6;
+      c.strokeStyle = q() < .7 ? `rgba(20,8,2,${.12 + q() * .15})` : `rgba(255,210,160,${.05 + q() * .06})`;
+      c.lineWidth = .6 + q() * 1.4; c.beginPath();
+      for (let yy = 0; yy <= len; yy += 8) { const px = gx + Math.sin(yy / fr + ph) * 2.2; yy === 0 ? c.moveTo(px, y + yy) : c.lineTo(px, y + yy); }
+      c.stroke();
+    }
+    const sh = c.createLinearGradient(x, 0, x + w, 0);
+    sh.addColorStop(0, 'rgba(255,230,190,.08)'); sh.addColorStop(.5, 'rgba(255,230,190,0)'); sh.addColorStop(1, 'rgba(0,0,0,.12)');
+    c.fillStyle = sh; c.fillRect(x, y, w, len);
+    c.fillStyle = 'rgba(0,0,0,.6)'; c.fillRect(x, y, w, 2); c.fillRect(x, y, 1.5, len);
+  };
+  for (let i = 0; i < 8; i++) {
+    let y = -r() * 400;
+    while (y < 512) {
+      const len = 170 + r() * 250, seed = Math.floor(r() * 1e6);
+      for (const oy of [0, 512, -512]) plank(i * 64, y + oy, 64, len, seed);
+      y += len;
+    }
+  }
+  return cv;
+})();
+const floorTex = tex(floorCanvas, true);
+floorTex.repeat.set(5.4 / FLOOR_TILE, 120 / FLOOR_TILE);
+const ceilTex = tex(floorCanvas, true);
+ceilTex.repeat.set(5.8 / FLOOR_TILE, 120 / FLOOR_TILE);
+
+/* 빨간 카펫 */
+const CARPET_W = 1.7, CARPET_TILE = 3.4;
+const carpetTex = (() => {
+  const [cv, c] = mk(256, 512);
+  c.fillStyle = '#5c141a'; c.fillRect(0, 0, 256, 512);
+  const r = seeded(5);
+  for (let i = 0; i < 4000; i++) { c.fillStyle = r() < .5 ? 'rgba(0,0,0,.12)' : 'rgba(255,120,120,.05)'; c.fillRect(r() * 256, r() * 512, 2, 2); }
+  c.strokeStyle = 'rgba(200,150,70,.35)'; c.lineWidth = 3;
+  for (let y = 0; y < 512; y += 128) {
+    c.beginPath(); c.moveTo(128, y + 10); c.lineTo(190, y + 64); c.lineTo(128, y + 118); c.lineTo(66, y + 64); c.closePath(); c.stroke();
+    c.fillStyle = 'rgba(200,150,70,.3)'; c.beginPath(); c.arc(128, y + 64, 12, 0, Math.PI * 2); c.fill();
+  }
+  c.fillStyle = '#35090d'; c.fillRect(0, 0, 12, 512); c.fillRect(244, 0, 12, 512);
+  c.fillStyle = '#c9a24a'; c.fillRect(16, 0, 9, 512); c.fillRect(231, 0, 9, 512);
+  c.fillStyle = 'rgba(201,162,74,.6)'; c.fillRect(32, 0, 3, 512); c.fillRect(221, 0, 3, 512);
+  const t = tex(cv, true); t.repeat.set(1, 120 / CARPET_TILE); return t;
+})();
+
+/* ---------- 바닥 · 천장 · 카펫 (구간마다 따로 깔아요) ---------- */
+floorTex.repeat.set(1, 1); ceilTex.repeat.set(1, 1); carpetTex.repeat.set(1, 1);
+const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: .5, metalness: 0 });
+const carpetMat = new THREE.MeshStandardMaterial({ map: carpetTex, roughness: .95 });
+const ceilMat = new THREE.MeshStandardMaterial({ map: ceilTex, color: 0x5a4232, roughness: .9 });
+function addStrip(parent, mat, w, s0, s1, y, tileW, tileL, up) {
+  const len = s1 - s0, g = new THREE.PlaneGeometry(w, len);
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / tileW, uv.getY(i) * len / tileL);
+  const m = new THREE.Mesh(g, mat);
+  m.rotation.x = up ? Math.PI / 2 : -Math.PI / 2; m.position.set(0, y, -(s0 + s1) / 2);
+  m.receiveShadow = !up; parent.add(m); return m;
+}
+
+/* ---------- 조명 ---------- */
+scene.add(new THREE.HemisphereLight(0xffe2bd, 0x3a2216, .38));
+const sun = new THREE.DirectionalLight(0xffe0b4, .55);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+Object.assign(sun.shadow.camera, { left: -5, right: 5, top: 6, bottom: -6, near: 1, far: 25 });
+sun.shadow.bias = -.0006;
+scene.add(sun); scene.add(sun.target);
+
+/* ---------- 구간 (책장 + 등 + 창문) ---------- */
+const brassMat = new THREE.MeshStandardMaterial({ color: 0xb08a4a, metalness: .85, roughness: .35 });
+const chainGeo = new THREE.CylinderGeometry(.014, .014, 1, 5);
+const shadeGeo = new THREE.ConeGeometry(.34, .3, 20, 1, true);
+const bulbGeo = new THREE.SphereGeometry(.11, 14, 10);
+const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffdca6, toneMapped: false });
+const lampGlowMat = new THREE.SpriteMaterial({ map: glowTex, color: 0xffb060, transparent: true, opacity: .55, blending: THREE.AdditiveBlending, depthWrite: false });
+const winMat = new THREE.MeshBasicMaterial({ map: windowTex, alphaTest: .5, side: THREE.DoubleSide, toneMapped: false });
+winMat.color.setScalar(1.15);
+const shaftMat = new THREE.MeshBasicMaterial({ map: shaftTex, color: 0xd8e6ff, transparent: true, opacity: .22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+const patchMat = new THREE.MeshBasicMaterial({ map: glowTex, color: 0xcfe0ff, transparent: true, opacity: .22, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+
+function quad(a, b, c, d) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([...a, ...b, ...c, ...d], 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute([0, 1, 1, 1, 1, 0, 0, 0], 2));
+  g.setIndex([0, 1, 2, 0, 2, 3]); g.computeBoundingSphere(); return g;
+}
+const zc = -SEG_L / 2;
+const shaftGeoA = quad([-AISLE, 5.0, zc + .95], [-AISLE, 5.0, zc - .95], [.9, .02, zc - .3], [.9, .02, zc + 1.6]);
+const shaftGeoB = quad([-AISLE, 1.6, zc + .95], [-AISLE, 1.6, zc - .95], [-.7, .02, zc - .6], [-.7, .02, zc + 1.2]);
+
+function makeLamp() {
+  const g = new THREE.Group();
+  const chain = new THREE.Mesh(chainGeo, brassMat); chain.scale.y = 1.5; chain.position.y = -.75; g.add(chain);
+  const sh = new THREE.Mesh(shadeGeo, brassMat); sh.material.side = THREE.DoubleSide; sh.position.y = -1.62; g.add(sh);
+  const bulb = new THREE.Mesh(bulbGeo, bulbMat); bulb.position.y = -1.74; g.add(bulb);
+  const glow = new THREE.Sprite(lampGlowMat); glow.scale.setScalar(1.6); glow.position.y = -1.76; g.add(glow);
+  g.position.set(0, CEIL, zc);
+  return g;
+}
+function makeWindowParts() {
+  const g = new THREE.Group();
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(2, 4), winMat);
+  glass.position.set(-AISLE - .015, 1.3 + 2, zc); glass.rotation.y = Math.PI / 2; g.add(glass);
+  const a = new THREE.Mesh(shaftGeoA, shaftMat); a.renderOrder = 2; g.add(a);
+  const b = new THREE.Mesh(shaftGeoB, shaftMat); b.renderOrder = 2; g.add(b);
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.4), patchMat);
+  p.rotation.x = -Math.PI / 2; p.position.set(.1, .015, zc + .6); p.renderOrder = 1; g.add(p);
+  return g;
+}
+
+function segKind(idx) {
+  if (idx < 2) return 'shelf';
+  const h = Math.abs(Math.imul(idx, 2654435761) >>> 7) % 6;
+  if (h === 0) return idx % 2 ? 'winL' : 'winR';
+  return 'shelf';
+}
+
+/* ---------- 길 (꺾이는 복도) ----------
+   길은 곧은 복도 + 모퉁이(왼쪽 또는 오른쪽으로 꺾임)가 이어진 모양이에요.
+   s = 출발점부터 달린 거리. 모든 장애물·책장은 이 s를 기준으로 놓고,
+   구간마다 방향이 달라서 화면에서는 꺾여 보여요. */
+const sections = [], segments = [];
+let segCounter = 0;
+const shelfWallGeos = [0, 1].map(v => { const B = new Builder(); buildShelfSide(B, -1, seeded(1300 + v * 7)); return B.geometry(); });
+const arrowTex = (() => {
+  const [cv, c] = mk(256, 128);
+  c.shadowColor = '#ffcf6e'; c.shadowBlur = 18;
+  c.fillStyle = '#ffd77a';
+  c.beginPath(); c.moveTo(20, 64); c.lineTo(100, 10); c.lineTo(100, 42); c.lineTo(236, 42); c.lineTo(236, 86);
+  c.lineTo(100, 86); c.lineTo(100, 118); c.closePath(); c.fill();
+  c.strokeStyle = '#fff6d8'; c.lineWidth = 5; c.stroke();
+  return tex(cv);
+})();
+const arrowMat = new THREE.MeshBasicMaterial({ map: arrowTex, transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
+const arrowGeo = new THREE.PlaneGeometry(1.8, .9);
+
+/* ---------- 소품 (책 더미 · 사다리 · 열람 책상 · 지구본 · 촛대 · 거미줄) ---------- */
+const PROP_PILES = [0, 1, 2, 3].map(v => {
+  const B = new Builder(), r = seeded(2000 + v * 11); let y = 0;
+  const n = 3 + Math.floor(r() * 5);
+  for (let i = 0; i < n; i++) {
+    const t = .05 + r() * .06, w = .3 + r() * .12, dd = .4 + r() * .14;
+    B.box(r() * .06 - .03, y + t / 2, r() * .06 - .03, dd, t, w, bookUV(Math.floor(r() * 32), 'lying'), gray(.8 + r() * .25), 0, (r() - .5) * .7, 0);
+    y += t;
+  }
+  if (r() < .7) B.box(0, .24, .34, .36, .48, .06, bookUV(Math.floor(r() * 32), 'shelf', -1), gray(.9), -.3, 0, 0);
+  return B.geometry();
+});
+const PROP_LADDER = (() => {
+  const B = new Builder(), H = 4.8;
+  for (const z of [-.22, .22]) B.box(0, H / 2, z, .06, H, .06, WOOD_R, gray(.8));
+  for (let y = .3; y < H; y += .38) B.box(0, y, 0, .045, .045, .44, WOOD, gray(.9));
+  return B.geometry();
+})();
+const PROP_DESK = (() => {
+  const B = new Builder();
+  B.box(0, .78, 0, .55, .05, 1.0, WOOD, gray(.75));
+  for (const x of [-.22, .22]) for (const z of [-.44, .44]) B.box(x, .38, z, .05, .76, .05, WOOD_R, gray(.6));
+  B.box(0, .65, 0, .5, .04, .9, WOOD, gray(.5));
+  // 펼쳐 둔 책
+  B.box(-.02, .815, -.12, .3, .02, .22, PAGES, gray(1), 0, 0, -.08);
+  B.box(-.02, .815, .11, .3, .02, .22, PAGES, gray(1), 0, 0, -.08);
+  B.box(.12, .82, .32, .2, .07, .14, bookUV(3, 'lying'), gray(.9), 0, .4, 0);
+  return B.geometry();
+})();
+const globeTex = (() => {
+  const [cv, c] = mk(256, 128);
+  c.fillStyle = '#5f7f86'; c.fillRect(0, 0, 256, 128);
+  const r = seeded(8);
+  c.fillStyle = '#cdb47e';
+  for (let i = 0; i < 9; i++) { const x = r() * 256, y = 25 + r() * 78; for (let k = 0; k < 8; k++) { c.beginPath(); c.arc(x + r() * 40 - 20, y + r() * 26 - 13, 6 + r() * 12, 0, Math.PI * 2); c.fill(); } }
+  c.strokeStyle = 'rgba(60,40,20,.4)'; c.lineWidth = 1;
+  for (let x = 0; x < 256; x += 21) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, 128); c.stroke(); }
+  for (let y = 16; y < 128; y += 16) { c.beginPath(); c.moveTo(0, y); c.lineTo(256, y); c.stroke(); }
+  return tex(cv);
+})();
+const globeMat = new THREE.MeshStandardMaterial({ map: globeTex, roughness: .45, metalness: .1 });
+const globeGeo = new THREE.SphereGeometry(.22, 24, 16);
+const ringGeo = new THREE.TorusGeometry(.25, .012, 6, 32);
+const poleGeo = new THREE.CylinderGeometry(.02, .02, 1, 8);
+const baseGeo = new THREE.CylinderGeometry(.16, .2, .05, 16);
+const candleGeo = new THREE.CylinderGeometry(.025, .025, .16, 8);
+const candleMat = new THREE.MeshStandardMaterial({ color: 0xf6ead0, roughness: .8, emissive: 0x3a2a10 });
+const shadeGreenMat = new THREE.MeshStandardMaterial({ color: 0x1f6a3a, roughness: .3, metalness: .3, emissive: 0x0a2a14 });
+const flameTex = (() => {
+  const [cv, c] = mk(32, 64);
+  const g = c.createRadialGradient(16, 42, 2, 16, 40, 22);
+  g.addColorStop(0, 'rgba(255,255,230,1)'); g.addColorStop(.35, 'rgba(255,190,80,.9)'); g.addColorStop(1, 'rgba(255,90,20,0)');
+  c.fillStyle = g; c.beginPath(); c.moveTo(16, 2); c.quadraticCurveTo(30, 40, 16, 62); c.quadraticCurveTo(2, 40, 16, 2); c.fill();
+  return tex(cv);
+})();
+const flameMat = new THREE.SpriteMaterial({ map: flameTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+const webTex = (() => {
+  const [cv, c] = mk(128, 128);
+  c.strokeStyle = 'rgba(255,255,255,.75)'; c.lineWidth = 1;
+  const spokes = 9;
+  for (let i = 0; i < spokes; i++) { const a = i / (spokes - 1) * Math.PI / 2; c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(a) * 128, Math.sin(a) * 128); c.stroke(); }
+  for (let rr = 14; rr < 128; rr += 13) {
+    c.beginPath();
+    for (let i = 0; i < spokes; i++) { const a = i / (spokes - 1) * Math.PI / 2, q = rr * (.92 + (i % 2) * .08); i ? c.lineTo(Math.cos(a) * q, Math.sin(a) * q) : c.moveTo(Math.cos(a) * q, Math.sin(a) * q); }
+    c.stroke();
+  }
+  return tex(cv);
+})();
+const webMat = new THREE.MeshBasicMaterial({ map: webTex, transparent: true, opacity: .5, depthWrite: false, side: THREE.DoubleSide });
+const webGeo = new THREE.PlaneGeometry(.9, .9);
+let flames = [];
+
+function addProp(g, side, sec, onWindowSide) {
+  const z = -rand(1, SEG_L - 1), q = Math.random(), x = side * 2.25;
+  const shadow = m => { m.castShadow = true; m.receiveShadow = true; return m; };
+  if (q < .32) {
+    const m = shadow(new THREE.Mesh(pick(PROP_PILES), atlasMat)); m.position.set(side * rand(2.05, 2.3), 0, z); m.rotation.y = rand(0, 3); g.add(m);
+  } else if (q < .5 && !onWindowSide) {
+    const m = shadow(new THREE.Mesh(PROP_LADDER, atlasMat)); m.position.set(side * 2.05, 0, z); m.rotation.z = -side * .1; g.add(m);
+  } else if (q < .66) {
+    const d = new THREE.Group(); d.position.set(side * 2.3, 0, z); g.add(d);
+    d.add(shadow(new THREE.Mesh(PROP_DESK, atlasMat)));
+    const pole = new THREE.Mesh(poleGeo, brassMat); pole.scale.y = .32; pole.position.set(side * .1, .96, -.3); d.add(pole);
+    const sh = new THREE.Mesh(new THREE.CylinderGeometry(.03, .1, .1, 12, 1, true), shadeGreenMat); sh.material.side = THREE.DoubleSide;
+    sh.position.set(side * .05, 1.12, -.3); sh.rotation.z = side * .5; d.add(sh);
+    const glow = new THREE.Sprite(lampGlowMat); glow.scale.setScalar(.7); glow.position.set(side * .02, 1.05, -.3); d.add(glow);
+  } else if (q < .8) {
+    const gl = new THREE.Group(); gl.position.set(x, 0, z); g.add(gl);
+    const base = new THREE.Mesh(baseGeo, brassMat); base.position.y = .025; gl.add(base);
+    const pole = new THREE.Mesh(poleGeo, brassMat); pole.scale.y = .7; pole.position.y = .38; gl.add(pole);
+    const globe = shadow(new THREE.Mesh(globeGeo, globeMat)); globe.position.y = .95; globe.rotation.z = .4; gl.add(globe);
+    const ring = new THREE.Mesh(ringGeo, brassMat); ring.position.y = .95; ring.rotation.y = Math.PI / 2; gl.add(ring);
+  } else {
+    const c = new THREE.Group(); c.position.set(x, 0, z); g.add(c);
+    const base = new THREE.Mesh(baseGeo, brassMat); base.position.y = .025; c.add(base);
+    const pole = new THREE.Mesh(poleGeo, brassMat); pole.scale.y = 1.3; pole.position.y = .65; c.add(pole);
+    for (const [dx, dz, dy] of [[0, 0, .08], [-.13, 0, 0], [.13, 0, 0]]) {
+      const arm = new THREE.Mesh(poleGeo, brassMat); arm.scale.y = .14; arm.rotation.z = Math.PI / 2; arm.position.set(dx / 2, 1.28, dz); if (dx) c.add(arm);
+      const cd = new THREE.Mesh(candleGeo, candleMat); cd.position.set(dx, 1.38 + dy, dz); c.add(cd);
+      const f = new THREE.Sprite(flameMat); f.scale.set(.09, .16, 1); f.position.set(dx, 1.52 + dy, dz); f.userData = { sec, ph: Math.random() * 6 }; c.add(f); flames.push(f);
+    }
+    const glow = new THREE.Sprite(lampGlowMat); glow.scale.setScalar(1.1); glow.position.y = 1.5; c.add(glow);
+  }
+}
+function addWeb(g, side) {
+  const w = new THREE.Mesh(webGeo, webMat);
+  w.position.set(side * (AISLE + .02), 5.15, rand(-.1, -.4)); w.rotation.y = -side * Math.PI / 2;
+  w.rotation.z = side < 0 ? Math.PI / 2 : 0; g.add(w);
+}
+function animateFlames(now) {
+  flames = flames.filter(f => f.userData.sec.outer.parent);
+  for (const f of flames) {
+    const k = 1 + Math.sin(now * 13 + f.userData.ph) * .12 + Math.sin(now * 23 + f.userData.ph * 2) * .08;
+    f.scale.set(.09 * (2 - k), .16 * k, 1);
+  }
+}
+
+function addSection(state0) {
+  const prev = sections[sections.length - 1];
+  const sec = { outer: new THREE.Group(), inner: new THREE.Group(), segs: [], strips: [] };
+  sec.outer.add(sec.inner);
+  if (!prev) { sec.th = 0; sec.s0 = -14; }
+  else { sec.th = prev.th + prev.turn * Math.PI / 2; sec.s0 = prev.sEnd; }
+  sec.dir = new THREE.Vector3(-Math.sin(sec.th), 0, -Math.cos(sec.th));
+  sec.right = new THREE.Vector3(Math.cos(sec.th), 0, -Math.sin(sec.th));
+  sec.P = prev ? prev.P.clone().addScaledVector(prev.dir, prev.sEnd - prev.s0) : sec.dir.clone().multiplyScalar(sec.s0);
+  sec.outer.position.copy(sec.P); sec.outer.rotation.y = sec.th; sec.inner.position.z = sec.s0;
+  const first = !prev;
+  const h = state0 === 'play' ? hardLevel() : 0;
+  const nSeg = first ? 12 : Math.max(5, Math.round(rand(7, 14) - 4 * h));
+  sec.sShelf = first ? sec.s0 : sec.s0 + AISLE;
+  sec.sEnd = sec.sShelf + nSeg * SEG_L + AISLE;          // 모퉁이 한가운데
+  sec.turn = Math.random() < .5 ? 1 : -1;                // 1 = 왼쪽, -1 = 오른쪽
+  for (let i = 0; i < nSeg; i++) {
+    const idx = segCounter++;
+    const g = new THREE.Group(); g.position.z = -(sec.sShelf + i * SEG_L);
+    const kind = segKind(idx), list = segGeos[kind];
+    const mesh = new THREE.Mesh(list[Math.abs(Math.imul(idx, 40503) >>> 5) % list.length], atlasMat); g.add(mesh);
+    const lamp = makeLamp(); g.add(lamp);
+    if (kind !== 'shelf') { const win = makeWindowParts(); win.scale.x = kind === 'winR' ? -1 : 1; g.add(win); }
+    const winSide = kind === 'winL' ? -1 : kind === 'winR' ? 1 : 0;
+    if (Math.random() < .5) { const sd = Math.random() < .5 ? -1 : 1; addProp(g, sd, sec, sd === winSide); }
+    if (Math.random() < .18) { const sd = Math.random() < .5 ? -1 : 1; addProp(g, sd, sec, sd === winSide); }
+    if (Math.random() < .3) { const sd = Math.random() < .5 ? -1 : 1; if (sd !== winSide) addWeb(g, sd); }
+    sec.inner.add(g);
+    const seg = { g, mesh, lamp, idx, s: sec.sShelf + i * SEG_L + SEG_L / 2, sec };
+    sec.segs.push(seg); segments.push(seg);
+  }
+  const fs = first ? sec.s0 : sec.sShelf, fe = sec.sEnd + AISLE;
+  sec.strips.push(addStrip(sec.inner, floorMat, 5.4, fs, fe, 0, FLOOR_TILE, FLOOR_TILE));
+  sec.strips.push(addStrip(sec.inner, ceilMat, 5.8, fs, fe, CEIL, FLOOR_TILE, FLOOR_TILE, true));
+  sec.strips.push(addStrip(sec.inner, carpetMat, CARPET_W, first ? sec.s0 : sec.s0 - CARPET_W / 2, sec.sEnd - CARPET_W / 2, .006, CARPET_W, CARPET_TILE));
+  // 모퉁이: 앞은 막힌 책장 벽, 꺾는 반대쪽도 책장 벽
+  const zc = -sec.sEnd;
+  const wa = new THREE.Mesh(pick(shelfWallGeos), atlasMat); wa.rotation.y = -Math.PI / 2; wa.position.set(-3, 0, zc); sec.inner.add(wa);
+  const ws = new THREE.Mesh(pick(shelfWallGeos), atlasMat);
+  if (sec.turn > 0) { ws.rotation.y = Math.PI; ws.position.set(0, 0, zc - 3); } else ws.position.set(0, 0, zc + 3);
+  sec.inner.add(ws);
+  const jl = makeLamp(); jl.position.z = zc; sec.inner.add(jl);
+  const jseg = { g: jl, mesh: null, lamp: jl, idx: segCounter++, s: sec.sEnd, sec };
+  sec.segs.push(jseg); segments.push(jseg);
+  // 꺾는 방향 화살표 (빛나는 표지)
+  const ar = new THREE.Mesh(arrowGeo, arrowMat); ar.position.set(0, 3.2, zc - AISLE + .15);
+  if (sec.turn < 0) ar.scale.x = -1;
+  sec.inner.add(ar);
+  scene.add(sec.outer);
+  sections.push(sec);
+  return sec;
+}
+function secFor(s) {
+  for (let i = sections.length - 1; i >= 0; i--) if (s >= sections[i].s0) return sections[i];
+  return sections[0];
+}
+/* 길 위의 위치(옆 x, 높이 y, 거리 s) → 실제 3D 위치 */
+const _tw = new THREE.Vector3();
+function TW(x, y, s, sec, out) {
+  sec = sec || secFor(s);
+  return (out || _tw).copy(sec.P).addScaledVector(sec.dir, s - sec.s0).addScaledVector(sec.right, x).setY(y);
+}
+function removeSection(sec) {
+  scene.remove(sec.outer);
+  for (const m of sec.strips) m.geometry.dispose();
+  const set = new Set(sec.segs);
+  for (let i = segments.length - 1; i >= 0; i--) if (set.has(segments[i])) segments.splice(i, 1);
+}
+
+/* 등불 빛 (가까운 등 몇 개에만 진짜 빛을 넣어요) */
+const lampLights = [];
+for (let i = 0; i < 5; i++) { const L = new THREE.PointLight(0xffb066, 1.7, 12, 2); scene.add(L); lampLights.push(L); }
+function updateLights(q) {
+  const s = -player.z;
+  const cand = segments.filter(g => g.s > s - 8 && g.s < s + 60).sort((a, b) => a.s - b.s);
+  const pickL = cand.filter((g, i) => i % 2 === 0);
+  lampLights.forEach((L, i) => {
+    const g = pickL[i];
+    if (!g) { L.position.set(0, -50, 0); return; }
+    TW(0, CEIL - 2.1, g.s, g.sec, L.position);
+    L.intensity = Math.random() < .07 * q ? .3 : 1.7;   // 지진 나면 깜빡깜빡
+  });
+}
+
+/* ---------- 요정 ---------- */
+const fairy = new THREE.Group(); scene.add(fairy);
+const body = new THREE.Group(); fairy.add(body);
+const stdMat = (c, o) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: .6 }, o || {}));
+const mSkin = stdMat(0xffe2c6), mHair = stdMat(0x6a3cc8, { roughness: .45 }), mLeg = stdMat(0x5a3b5e);
+const mDress = stdMat(0xf0609a, { roughness: .5, emissive: 0x2a0812 }), mTrim = stdMat(0xffd1e3, { emissive: 0x1a0810 });
+function part(geo, mat, x, y, z, parent) {
+  const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; (parent || body).add(m); return m;
+}
+const legGeo = new THREE.CylinderGeometry(.032, .026, .23, 8); legGeo.translate(0, -.115, 0);
+const legL = part(legGeo, mLeg, -.065, .23, 0), legR = part(legGeo, mLeg, .065, .23, 0);
+part(new THREE.ConeGeometry(.215, .46, 28), mDress, 0, .41, 0);
+const trim = part(new THREE.TorusGeometry(.205, .02, 8, 28), mTrim, 0, .19, 0); trim.rotation.x = Math.PI / 2;
+part(new THREE.SphereGeometry(.088, 16, 12), mDress, 0, .61, 0).scale.set(1, 1.1, .85);
+const armGeo = new THREE.CylinderGeometry(.022, .019, .25, 8); armGeo.translate(0, -.125, 0);
+const armL = part(armGeo, mSkin, -.085, .66, 0), armR = part(armGeo, mSkin, .085, .66, 0);
+part(new THREE.SphereGeometry(.155, 24, 16), mSkin, 0, .8, 0);
+part(new THREE.SphereGeometry(.168, 24, 16), mHair, 0, .815, .03);
+part(new THREE.SphereGeometry(.076, 14, 10), mHair, -.08, .955, .05);
+const eyeGeo = new THREE.SphereGeometry(.018, 8, 6), mEye = stdMat(0x2a1b2e);
+part(eyeGeo, mEye, -.055, .8, -.145); part(eyeGeo, mEye, .055, .8, -.145);
+const crownStar = new THREE.Sprite(new THREE.SpriteMaterial({ map: starTex, color: 0xffe27a, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+crownStar.scale.setScalar(.2); crownStar.position.set(.03, 1.1, 0); body.add(crownStar);
+/* 요정 디테일: 뒷머리 · 머리카락 가닥 · 리본 · 꽃잎 치마 · 레이스 · 소매 · 구두 · 요술봉 */
+const mHairHi = stdMat(0x8f62e6, { roughness: .35 }), mRibbon = stdMat(0xffb0cf, { roughness: .4, emissive: 0x2a0a18 });
+const mLace = stdMat(0xfff4fa, { roughness: .7 }), mShoe = stdMat(0xd2457f, { roughness: .3 });
+part(new THREE.SphereGeometry(.16, 20, 14), mHair, 0, .73, .07).scale.set(1.02, 1.35, .7);
+part(new THREE.SphereGeometry(.076, 14, 10), mHair, .08, .955, .05);
+const hairStrands = [], strandGeo = new THREE.SphereGeometry(.05, 10, 8);
+for (let i = 0; i < 5; i++) {
+  const pv = new THREE.Group(); pv.position.set((i - 2) * .055, .8, .12); body.add(pv);
+  const m = part(strandGeo, i % 2 ? mHair : mHairHi, 0, -.13, 0, pv); m.scale.set(.75, 2.7, .6);
+  hairStrands.push(pv);
+}
+function bow(x, y, z, sc) {
+  const g = new THREE.Group(); g.position.set(x, y, z); g.scale.setScalar(sc); body.add(g);
+  const loop = new THREE.SphereGeometry(.05, 12, 8);
+  const a = part(loop, mRibbon, -.05, 0, 0, g); a.scale.set(1.1, .7, .45); a.rotation.z = .35;
+  const b = part(loop, mRibbon, .05, 0, 0, g); b.scale.set(1.1, .7, .45); b.rotation.z = -.35;
+  part(new THREE.SphereGeometry(.022, 8, 6), mRibbon, 0, 0, .01, g);
+  const t1 = part(loop, mRibbon, -.025, -.065, 0, g); t1.scale.set(.32, 1, .3); t1.rotation.z = .25;
+  const t2 = part(loop, mRibbon, .025, -.065, 0, g); t2.scale.set(.32, 1, .3); t2.rotation.z = -.25;
+  return g;
+}
+bow(-.08, .965, .1, .85); bow(.08, .965, .1, .85);
+const belt = part(new THREE.TorusGeometry(.1, .016, 8, 24), mRibbon, 0, .55, 0); belt.rotation.x = Math.PI / 2;
+const backBow = bow(0, .55, .1, 1.35);
+const petalGeo = new THREE.SphereGeometry(.1, 12, 8);
+for (let i = 0; i < 8; i++) {
+  const a = i / 8 * Math.PI * 2;
+  const m = part(petalGeo, i % 2 ? mDress : mRibbon, Math.sin(a) * .12, .44, Math.cos(a) * .12);
+  m.scale.set(.75, 1.5, .35); m.rotation.set(-.5, a, 0, 'YXZ');
+}
+const hemGeo = new THREE.SphereGeometry(.03, 8, 6);
+for (let i = 0; i < 16; i++) { const a = i / 16 * Math.PI * 2; part(hemGeo, mLace, Math.sin(a) * .215, .19, Math.cos(a) * .215); }
+part(new THREE.SphereGeometry(.045, 12, 8), mRibbon, -.095, .655, 0); part(new THREE.SphereGeometry(.045, 12, 8), mRibbon, .095, .655, 0);
+const shoeGeo = new THREE.SphereGeometry(.036, 10, 8);
+for (const lg of [legL, legR]) part(shoeGeo, mShoe, 0, -.235, -.015, lg).scale.set(1, .7, 1.5);
+const wand = new THREE.Group(); wand.position.set(0, -.24, 0); armR.add(wand);
+const wandStick = part(new THREE.CylinderGeometry(.008, .008, .26, 6), stdMat(0xfff1c4, { metalness: .6, roughness: .3 }), 0, .09, -.06, wand);
+wandStick.rotation.x = -.6;
+const wandStar = new THREE.Sprite(new THREE.SpriteMaterial({ map: starTex, color: 0xfff0a0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+wandStar.scale.setScalar(.24); wandStar.position.set(0, .2, -.14); wand.add(wandStar);
+// 날개
+const wingGeo = new THREE.PlaneGeometry(1, 1); wingGeo.translate(-.46875, .28125, 0);
+const wingFront = new THREE.MeshBasicMaterial({ map: wingTex, transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, opacity: .9 });
+const wingBack = wingFront.clone(); wingBack.color.set(0x9cc8ff); wingBack.opacity = .65;
+wingFront.opacity = .8;
+const wingRoot = new THREE.Group(); wingRoot.position.set(0, .6, .08); body.add(wingRoot);
+const pivL = new THREE.Group(), pivR = new THREE.Group(); pivR.scale.x = -1; wingRoot.add(pivL, pivR);
+for (const piv of [pivL, pivR]) {
+  const up = new THREE.Mesh(wingGeo, wingFront); up.scale.setScalar(.62); up.rotation.z = -.12; up.renderOrder = 3; piv.add(up);
+  const lo = new THREE.Mesh(wingGeo, wingBack); lo.scale.setScalar(.4); lo.rotation.z = .95; lo.position.z = -.01; lo.renderOrder = 3; piv.add(lo);
+}
+// 날개에 무지갯빛 반짝임 한 겹 더
+const wingShine = new THREE.MeshBasicMaterial({ map: wingTex, transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, blending: THREE.AdditiveBlending, opacity: .4 });
+for (const piv of [pivL, pivR]) {
+  const sh = new THREE.Mesh(wingGeo, wingShine); sh.scale.setScalar(.64); sh.rotation.z = -.12; sh.position.z = .005; sh.renderOrder = 4; piv.add(sh);
+  const sl = new THREE.Mesh(wingGeo, wingShine); sl.scale.setScalar(.42); sl.rotation.z = .95; sl.renderOrder = 4; piv.add(sl);
+}
+const fairyGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffe096, transparent: true, opacity: .22, blending: THREE.AdditiveBlending, depthWrite: false }));
+fairyGlow.scale.setScalar(1.3); fairyGlow.position.y = .55; body.add(fairyGlow);
+const fairyLight = new THREE.PointLight(0xffd8a0, .9, 3.6, 2); fairyLight.position.set(0, .8, -.9); fairy.add(fairyLight);
+
+/* ---------- 요정 가루 · 먼지 ---------- */
+const SPARK_N = 90, sparks = [];
+for (let i = 0; i < SPARK_N; i++) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: starTex, color: 0xffec96, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+  sp.visible = false; scene.add(sp);
+  sparks.push({ sp, life: 0, max: 1, vx: 0, vy: 0, vz: 0, s: .1 });
+}
+let sparkI = 0;
+function addSparkle(x, y, z, burst) {
+  const s = sparks[sparkI++ % SPARK_N], sec = player.sec;
+  TW(x, y, -z, sec, s.sp.position);
+  const vx = burst ? rand(-1.4, 1.4) : rand(-.3, .3), vz = burst ? rand(-.6, 1) : rand(.2, .8);
+  s.vx = sec.right.x * vx - sec.dir.x * vz;
+  s.vz = sec.right.z * vx - sec.dir.z * vz;
+  s.vy = burst ? rand(.2, 1.4) : rand(-.4, .4);
+  s.life = s.max = burst ? .5 : .45; s.s = rand(.07, .13); s.sp.visible = true;
+}
+function updateSparks(dt) {
+  for (const s of sparks) {
+    if (s.life <= 0) continue;
+    s.life -= dt;
+    if (s.life <= 0) { s.sp.visible = false; continue; }
+    s.sp.position.x += s.vx * dt; s.sp.position.y += s.vy * dt; s.sp.position.z += s.vz * dt;
+    const a = s.life / s.max;
+    s.sp.material.opacity = a; s.sp.scale.setScalar(s.s * (.6 + a * .6));
+  }
+}
+const MOTE_N = 260;
+const motePos = new Float32Array(MOTE_N * 3), moteBase = [];
+for (let i = 0; i < MOTE_N; i++) {
+  moteBase.push({ y: rand(.2, 5.8), ph: Math.random() * 6 });
+  motePos[i * 3] = rand(-2.4, 2.4); motePos[i * 3 + 1] = moteBase[i].y; motePos[i * 3 + 2] = rand(-40, 4);
+}
+const moteGeo = new THREE.BufferGeometry(); moteGeo.setAttribute('position', new THREE.BufferAttribute(motePos, 3));
+const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({ size: .05, map: glowTex, color: 0xffe2a0, transparent: true, opacity: .75, depthWrite: false, blending: THREE.AdditiveBlending }));
+motes.frustumCulled = false;
+const moteRoot = new THREE.Group(); scene.add(moteRoot); moteRoot.add(motes);
+function updateMotes(dt, now) {
+  const v = (state === 'play' ? speed * S : 3) * dt;
+  for (let i = 0; i < MOTE_N; i++) {
+    const b = moteBase[i];
+    motePos[i * 3 + 2] += v;
+    if (motePos[i * 3 + 2] > 6) motePos[i * 3 + 2] -= 44;
+    motePos[i * 3 + 1] = b.y + Math.sin(now * .7 + b.ph) * .15;
+    motePos[i * 3] += Math.sin(now * .5 + b.ph * 3) * .002;
+  }
+  moteGeo.attributes.position.needsUpdate = true;
+}
+
+/* ---------- 상태 ---------- */
+const LANE = 1.15;               // 줄 간격 (왼쪽 · 가운데 · 오른쪽)
+const laneX = l => (l - 1) * LANE;
+let state = 'ready';
+let player, obstacles = [], speed, elapsed, spawnCursor, jumpBuffer, overAt, tilt = 0, shake = 0, ambientT = 2;
+let slideTimer = 0, slideHold = false, slideKey = false;
+let best = 0;
+try { best = +localStorage.getItem('bookrun3d-best-pages') || 0; } catch (e) {}
+player = { z: 0, x: 0, lane: 1, y: 0, vy: 0, onGround: true, run: 0 };
+player.sec = addSection(state);
+let pendingTurn = false;
+const TURN_WIN = 10;                       // 모퉁이 몇 m 앞부터 꺾기 입력을 받을지
+const turnOff = new THREE.Vector3();        // 꺾을 때 화면이 툭 튀지 않게 하는 보정값
+let fairyYaw = 0, camYaw = 0;
+function ensureSections() { while (sections[sections.length - 1].sEnd < -player.z + 140) addSection(state); }
+function cleanupSections() {
+  while (sections.length > 2 && sections[0] !== player.sec && sections[1] !== player.sec) removeSection(sections.shift());
+  if (sections.length > 2 && sections[0] !== player.sec && -player.z > sections[1].s0 + 12) removeSection(sections.shift());
+}
+function doTurn() {
+  const i = sections.indexOf(player.sec), next = sections[i + 1];
+  if (!next) return;
+  const before = TW(player.x, 0, -player.z, player.sec, new THREE.Vector3());
+  player.sec = next; pendingTurn = false;
+  turnOff.add(before.sub(TW(player.x, 0, -player.z, next, new THREE.Vector3())));
+  if (state === 'play') { sfxWhoosh(); for (let k = 0; k < 8; k++) addSparkle(player.x + rand(-.2, .2), player.y + .5, player.z, true); }
+}
+/* 좌우 밀기: 모퉁이 앞이면 꺾기, 아니면 줄 바꾸기 */
+function steer(dir) {
+  const s = -player.z, sc = player.sec.sEnd;
+  if (!pendingTurn && sc - s <= TURN_WIN && s < sc + AISLE - .45 && dir === -player.sec.turn) {
+    pendingTurn = true; sfxWhoosh(); return;
+  }
+  moveLane(dir);
+}
+chainGeo.userData.shared = true;
+
+function disposeGroup(g) {
+  if (g.parent) g.parent.remove(g);
+  g.traverse(m => { if (m.geometry && !m.geometry.userData.shared) m.geometry.dispose(); });
+}
+
+/* ---------- 날아다니는 책 (무너지는 책장용) ---------- */
+const BOOK_GEOS = [];
+for (let i = 0; i < 16; i++) {
+  const r = seeded(900 + i * 13), B = new Builder();
+  const dd = .34 + r() * .12, h = .5 + r() * .28, t = .07 + r() * .08;
+  B.box(0, 0, 0, dd, h, t, bookUV(Math.floor(r() * 32), 'shelf', -1), gray(.8 + r() * .25));
+  const g = B.geometry(); g.userData = { shared: true, dd, h, t };
+  BOOK_GEOS.push(g);
+}
+let flyers = [];
+function launchBook(parent, geo, from, to, rotTo, delay, dur, thud) {
+  const m = new THREE.Mesh(geo, atlasMat); m.frustumCulled = false;
+  m.castShadow = true; m.position.copy(from); m.visible = false; parent.add(m);
+  const r0 = new THREE.Euler(rand(-.3, .3), rand(-.5, .5), rand(-.3, .3), 'YXZ');
+  const r1 = rotTo.clone();
+  r1.x += Math.round(rand(-1, 1)) * Math.PI * 2; r1.z += Math.round(rand(-1, 1)) * Math.PI * 2; // 빙글빙글
+  flyers.push({ m, from: from.clone(), to: to.clone(), r0, r1, fin: rotTo, t: -delay, dur, thud, parent });
+  return m;
+}
+function updateFlyers(dt) {
+  flyers = flyers.filter(f => {
+    f.t += dt;
+    if (f.t < 0) return true;
+    if (!f.parent.parent) return false;
+    f.m.visible = true;
+    const u = Math.min(1, f.t / f.dur), m = f.m;
+    m.position.x = f.from.x + (f.to.x - f.from.x) * u;
+    m.position.z = f.from.z + (f.to.z - f.from.z) * u;
+    m.position.y = f.from.y + (f.to.y - f.from.y) * u * u + Math.sin(Math.PI * u) * .55;
+    m.rotation.set(f.r0.x + (f.r1.x - f.r0.x) * u, f.r0.y + (f.r1.y - f.r0.y) * u, f.r0.z + (f.r1.z - f.r0.z) * u, 'YXZ');
+    if (u >= 1) {
+      m.position.copy(f.to); m.rotation.copy(f.fin);
+      if (f.thud) { const w = f.parent.localToWorld(f.to.clone()); puff(w.x, .1, w.z); if (state === 'play') sfxThud(); }
+      return false;
+    }
+    return true;
+  });
+}
+
+/* 먼지 구름 */
+const puffs = [];
+for (let i = 0; i < 36; i++) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xcdb08a, transparent: true, opacity: 0, depthWrite: false }));
+  sp.visible = false; scene.add(sp); puffs.push({ sp, life: 0 });
+}
+let puffI = 0;
+function puff(x, y, z) {
+  for (let k = 0; k < 2; k++) {
+    const p = puffs[puffI++ % puffs.length];
+    p.sp.position.set(x + rand(-.25, .25), y + rand(0, .2), z + rand(-.25, .25));
+    p.life = p.max = rand(.6, .9); p.vy = rand(.2, .6); p.sp.visible = true;
+  }
+}
+function updatePuffs(dt) {
+  for (const p of puffs) {
+    if (p.life <= 0) continue;
+    p.life -= dt; if (p.life <= 0) { p.sp.visible = false; continue; }
+    const a = p.life / p.max;
+    p.sp.position.y += p.vy * dt;
+    p.sp.material.opacity = .45 * a; p.sp.scale.setScalar(.5 + (1 - a) * 1.4);
+  }
+}
+
+/* 부딪히면 흩날리는 책장(종이) */
+const pageTex = (() => {
+  const [cv, c] = mk(48, 64);
+  c.fillStyle = '#f5ead2'; c.fillRect(0, 0, 48, 64);
+  c.fillStyle = 'rgba(90,70,50,.45)';
+  for (let y = 10; y < 56; y += 6) c.fillRect(6, y, 36 - (y % 18 === 4 ? 12 : 0), 2);
+  return tex(cv);
+})();
+const pages = [];
+for (let i = 0; i < 40; i++) {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: pageTex, transparent: true, depthWrite: false }));
+  sp.visible = false; sp.scale.set(.2, .26, 1); scene.add(sp); pages.push({ sp, life: 0 });
+}
+function burstPages(x, y, z) {
+  for (const p of pages) {
+    p.sp.position.set(x + rand(-.2, .2), y + rand(0, .6), z + rand(-.2, .2));
+    p.v = new THREE.Vector3(rand(-3, 3), rand(1.5, 5), rand(-2.5, 3));
+    p.spin = rand(-9, 9); p.life = p.max = rand(1.4, 2.2); p.sp.visible = true;
+  }
+}
+function updatePages(dt) {
+  for (const p of pages) {
+    if (p.life <= 0) continue;
+    p.life -= dt; if (p.life <= 0) { p.sp.visible = false; continue; }
+    p.v.y -= 5.5 * dt; p.v.multiplyScalar(1 - dt * .8);
+    p.sp.position.addScaledVector(p.v, dt);
+    p.sp.material.rotation += p.spin * dt;
+    p.sp.material.opacity = Math.min(1, p.life * 2);
+  }
+}
+
+/* 빨라지면 보이는 속도선 */
+const speedMat = new THREE.MeshBasicMaterial({ color: 0xfff0d0, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+const speedGeo = new THREE.PlaneGeometry(.02, 2.2); speedGeo.rotateX(Math.PI / 2);
+const streaks = [];
+for (let i = 0; i < 46; i++) {
+  const m = new THREE.Mesh(speedGeo, speedMat);
+  const a = Math.random() * Math.PI * 2, rr = rand(1.3, 2.6);
+  m.userData = { ox: Math.cos(a) * rr * 1.3, oy: Math.sin(a) * rr * .9, oz: rand(-22, 0) };
+  m.visible = false; moteRoot.add(m); streaks.push(m);
+}
+function updateStreaks(dt) {
+  const p = state === 'play' ? speedProgress() : 0;
+  speedMat.opacity = p * .3;
+  for (const m of streaks) {
+    m.visible = p > 0;
+    if (!m.visible) continue;
+    const u = m.userData;
+    u.oz += speed * S * 1.6 * dt;
+    if (u.oz > 2) u.oz -= 24;
+    m.position.set(u.ox, 2 + u.oy, 3.8 + u.oz);
+  }
+}
+
+/* 가끔 책장에서 떨어지는 책 (구경거리, 안 부딪힘) */
+let ambientList = [];
+function dropAmbient(sideIn) {
+  const side = sideIn || (Math.random() < .5 ? -1 : 1);
+  const n = (Math.random() < .3 ? 3 : 1) + Math.floor(Math.random() * 7 * quakeQ);
+  const z = player.z - rand(8, 22), sec = secFor(-z);
+  if (Math.abs(-z - sec.sEnd) < 9 || Math.abs(-z - sec.s0) < 9) return;   // 모퉁이 근처는 건너뛰기
+  for (let i = 0; i < n; i++) {
+    const geo = pick(BOOK_GEOS), t = geo.userData.t;
+    const from = new THREE.Vector3(side * 2.9, rand(1.5, 4.8), z + rand(-.6, .6) - i * rand(0, .25));
+    const to = new THREE.Vector3(side * rand(1.9, 2.4), t / 2, from.z + rand(-.3, .3));
+    const bm = launchBook(sec.inner, geo, from, to, new THREE.Euler(Math.PI / 2, rand(0, 3), 0, 'YXZ'), i * rand(.03, .12), rand(.55, .75), i % 3 === 0);
+    ambientList.push({ m: bm, s: -to.z });
+  }
+}
+function cleanAmbient(all) {
+  const s = -player.z;
+  ambientList = ambientList.filter(a => { if (all || a.s < s - 6) { if (a.m.parent) a.m.parent.remove(a.m); return false; } return true; });
+}
+
+function reset() {
+  for (const o of obstacles) disposeGroup(o.mesh);
+  obstacles = [];
+  cleanAmbient(true); flyers = [];
+  for (const p of pages) { p.life = 0; p.sp.visible = false; }
+  player.y = 0; player.vy = 0; player.onGround = true; player.lane = 1; player.x = 0;
+  speed = START_SPEED;
+  elapsed = 0; meters = 0; speedUpAt = -99; score = 0; combo = 0;
+  for (const it of items) if (it.m.parent) it.m.parent.remove(it.m);
+  items = [];
+  pendingTurn = false;
+  if (-player.z > player.sec.sEnd - 16) {
+    ensureSections();
+    const i = sections.indexOf(player.sec); player.sec = sections[i + 1];
+    player.z = -(player.sec.s0 + 3); turnOff.set(0, 0, 0); fairyYaw = camYaw = player.sec.th;
+  }
+  spawnCursor = player.z - 24; jumpBuffer = 0; ambientT = 2; itemS = -player.z + 5;
+  slideTimer = 0; slideHold = false; slideKey = false;
+}
+reset();
+
+const isSliding = () => slideTimer > 0 || slideHold || slideKey;
+
+function playerBox() {
+  const sliding = isSliding() && player.onGround;
+  return { x: player.x, hw: .22, z: player.z, y: player.y, h: (sliding ? 22 : 44) * S, hd: (sliding ? 46 : 30) * S / 2, sliding };
+}
+
+function jump() {
+  if (player.onGround) {
+    slideTimer = 0; slideHold = false;
+    player.vy = JUMP_V; player.onGround = false;
+    sfxJump();
+    for (let i = 0; i < 8; i++) addSparkle(player.x + rand(-.15, .15), .05, player.z, true);
+  } else {
+    jumpBuffer = 0.12;
+  }
+}
+function startSlide(hold) {
+  if (!isSliding()) sfxSlide();
+  slideTimer = .6; if (hold) slideHold = true;
+}
+function moveLane(dir) {
+  const nl = Math.max(0, Math.min(2, player.lane + dir));
+  if (nl === player.lane) { shake = Math.max(shake, .12); return; }
+  player.lane = nl;
+  sfxWhoosh();
+  for (let i = 0; i < 4; i++) addSparkle(player.x + rand(-.1, .1), player.y + .5, player.z + .1, true);
+}
+
+/* ---------- 장애물 ---------- */
+const chainMat = new THREE.MeshStandardMaterial({ color: 0x9a8058, metalness: .8, roughness: .4 });
+function finishObstacle(B) {
+  const m = new THREE.Mesh(B.geometry(), atlasMat); m.frustumCulled = false;
+  m.castShadow = true; m.receiveShadow = true;
+  const g = new THREE.Group(); g.add(m); scene.add(g); return g;
+}
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const pickLanes = n => shuffle([0, 1, 2]).slice(0, n).sort();
+const lanePart = (l, y0, y1) => ({ x0: laneX(l) - .5, x1: laneX(l) + .5, y0, y1 });
+
+/* 바닥 책 (점프하거나 옆으로 피하기) — 난이도: 300쪽까지 0, 300→400쪽 동안 1까지 */
+function makeLow(zFront, lanes) {
+  const d = speedProgress(), B = new Builder();
+  let D, H;
+  if (Math.random() < 0.3) {
+    // 세워 놓은 책 줄
+    const n = Math.random() < 0.5 * d ? 2 : 1;
+    const rows = []; D = 0; H = 0;
+    for (let i = 0; i < n; i++) {
+      const w = (rand(10, 13) + d * rand(5, 9)) * S, h = (rand(28, 36) + d * rand(10, 20)) * S;
+      rows.push({ w, h }); D += w + (i ? .02 : 0); H = Math.max(H, h);
+    }
+    for (const l of lanes) {
+      let z = D / 2;
+      for (const row of rows) {
+        let x = laneX(l) - .48;
+        while (x < laneX(l) + .4) {
+          const t = rand(.1, .17);
+          const hh = row.h * rand(.93, 1);
+          B.box(x + t / 2, hh / 2, z - row.w / 2, t, hh, row.w * .96, bookUV(Math.floor(Math.random() * 32), 'upright'),
+            gray(rand(.8, 1.05)), 0, 0, rand(-.025, .025));
+          x += t + .006;
+        }
+        z -= row.w + .02;
+      }
+    }
+  } else {
+    // 눕혀 쌓은 책 더미 (초반: 1~2권, 후반: 2~4권)
+    const n = d < 0.01 ? 1 + Math.floor(Math.random() * 2) : Math.min(4, 2 + Math.floor(Math.random() * (1 + 2 * d)));
+    const ts = [], ws = []; H = 0; let Wmax = 0;
+    const offMax = (2 + 4 * d) * S;
+    for (let i = 0; i < n; i++) { ts.push(rand(10, 13) * S); ws.push((rand(20, 26) + d * rand(8, 14)) * S); H += ts[i]; Wmax = Math.max(Wmax, ws[i]); }
+    D = Wmax + offMax;
+    for (const l of lanes) {
+      let y = 0;
+      for (let i = 0; i < n; i++) {
+        B.box(laneX(l) + rand(-.04, .04), y + ts[i] / 2, rand(-offMax, offMax) / 2, rand(.78, .9), ts[i], ws[i],
+          bookUV(Math.floor(Math.random() * 32), 'lying'), gray(rand(.8, 1.05)), 0, rand(-.16, .16), 0);
+        y += ts[i];
+      }
+    }
+  }
+  const g = finishObstacle(B);
+  const o = { type: 'low', z: zFront - D / 2, d: D, parts: lanes.map(l => lanePart(l, 0, H)), mesh: g };
+  g.position.z = o.z; return o;
+}
+
+/* 높이 쌓인 책 탑 (점프로 못 넘음 → 옆으로 피하기) */
+function makeTower(zFront, lanes) {
+  const B = new Builder(), D = rand(.75, .9), parts = [];
+  for (const l of lanes) {
+    let y = 0; const top = rand(3.3, 3.9);
+    while (y < top) {
+      const t = rand(.15, .26);
+      B.box(laneX(l) + rand(-.05, .05), y + t / 2, rand(-.05, .05), rand(.72, .88), t, rand(.6, D),
+        bookUV(Math.floor(Math.random() * 32), 'lying'), gray(rand(.8, 1.05)), 0, rand(-.3, .3), 0);
+      y += t;
+    }
+    parts.push(lanePart(l, 0, y));
+  }
+  const g = finishObstacle(B);
+  const o = { type: 'tower', z: zFront - D / 2, d: D, parts, mesh: g, ph: Math.random() * 6 };
+  g.position.z = o.z; return o;
+}
+
+/* 위에 매달린 책장 (슬라이드로 지나가거나 비어 있는 줄로 피하기) */
+function makeHigh(zFront, lanes) {
+  const d = speedProgress(), B = new Builder();
+  const D = (rand(36, 50) + d * rand(14, 40)) * S, bottom = 34 * S, FH = 46 * S, top = bottom + FH;
+  const lo = Math.min(...lanes), hi = Math.max(...lanes);
+  const x0 = lo === 0 ? -AISLE : laneX(lo) - .58, x1 = hi === 2 ? AISLE : laneX(hi) + .58;
+  const W = x1 - x0, cx = (x0 + x1) / 2;
+  B.box(cx, bottom + .045, 0, W + .1, .09, D + .06, WOOD, gray(.75));
+  B.box(cx, top - .04, 0, W + .16, .08, D + .1, WOOD, gray(.65));
+  B.box(cx, bottom + FH / 2, -D / 2 + .03, W, FH, .05, WOOD, gray(.3));
+  const dividers = [x0, x1];
+  for (let k = 1; k < Math.round(W / 1.5); k++) dividers.push(x0 + W * k / Math.round(W / 1.5));
+  for (const x of dividers) B.box(x, bottom + FH / 2, 0, .07, FH, D, WOOD_R, gray(.6));
+  let x = x0 + .05;
+  while (x < x1 - .08) {
+    const t = rand(.07, .13), h = rand(.5, .78) * (FH - .2);
+    if (x + t > x1 - .05) break;
+    if (dividers.some(v => Math.abs(x + t / 2 - v) < t / 2 + .04)) { x += .05; continue; }
+    B.box(x + t / 2, bottom + .09 + h / 2, .02, t, h, D * .82, bookUV(Math.floor(Math.random() * 32), 'upright'), gray(rand(.75, 1.05)));
+    x += t + .005;
+  }
+  const g = finishObstacle(B);
+  const len = CEIL - top;
+  for (const chx of [x0 + .3, x1 - .3]) {
+    const ch = new THREE.Mesh(chainGeo, chainMat); ch.scale.y = len; ch.position.set(chx, top + len / 2, 0); ch.castShadow = true; g.add(ch);
+  }
+  const o = { type: 'high', z: zFront - D / 2, d: D, parts: [{ x0, x1, y0: bottom, y1: 99 }], mesh: g };
+  g.position.z = o.z; return o;
+}
+
+/* 무너지는 책장: 가까이 가면 옆 책장에서 책이 쏟아져 통로에 쌓여요 (점프 or 피하기) */
+function makeCollapse(zFront, side, lanes) {
+  const D = 1.7, g = new THREE.Group(); scene.add(g);
+  const plans = [], parts = [];
+  for (const l of lanes) {
+    const cx = laneX(l), cell = new Float32Array(4 * 7);
+    let H = 0;
+    for (let i = 0; i < 26; i++) {
+      const geo = pick(BOOK_GEOS), t = geo.userData.t;
+      const lx = rand(-.36, .36), lz = rand(-D / 2 + .3, D / 2 - .3);
+      const ci = Math.max(0, Math.min(3, Math.floor((lx + .5) / .25))), cj = Math.max(0, Math.min(6, Math.floor((lz + D / 2) / .25)));
+      let base = 0;
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+        const ii = ci + a, jj = cj + b; if (ii < 0 || ii > 3 || jj < 0 || jj > 6) continue;
+        base = Math.max(base, cell[jj * 4 + ii]);
+      }
+      if (base > .6) continue;
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+        const ii = ci + a, jj = cj + b; if (ii < 0 || ii > 3 || jj < 0 || jj > 6) continue;
+        cell[jj * 4 + ii] = base + t;
+      }
+      plans.push({ geo, to: new THREE.Vector3(cx + lx, base + t / 2, lz),
+        rot: new THREE.Euler(Math.PI / 2 + rand(-.15, .15), rand(0, Math.PI), rand(-.15, .15), 'YXZ') });
+      H = Math.max(H, base + t);
+    }
+    parts.push(lanePart(l, 0, Math.max(.45, H)));
+  }
+  const o = { type: 'collapse', z: zFront - D / 2, d: D, parts, mesh: g, side, plans, triggered: false };
+  g.position.z = o.z; return o;
+}
+function triggerCollapse(o) {
+  o.triggered = true;
+  o.plans.forEach((p, i) => {
+    const from = new THREE.Vector3(o.side * 2.85, rand(.8, 4.8), p.to.z + rand(-.8, .8));
+    const delay = rand(0, .45) + Math.abs(p.to.x - o.side * 2.6) * .07;
+    launchBook(o.mesh, p.geo, from, p.to, p.rot, delay, rand(.5, .72), i % 5 === 0);
+  });
+  sfxCollapse(); shake = Math.max(shake, .35);
+}
+
+/* ---------- 무너지는 바닥 (구멍 → 점프로 넘기) ---------- */
+const holeTex = (() => {
+  const [cv, c] = mk(256, 256);
+  const g = c.createRadialGradient(128, 128, 10, 128, 128, 180);
+  g.addColorStop(0, '#000000'); g.addColorStop(.6, '#0a0503'); g.addColorStop(1, '#2a160c');
+  c.fillStyle = g; c.fillRect(0, 0, 256, 256);
+  const r = seeded(77);
+  // 부서진 판자 끝 (들쭉날쭉)
+  for (const edge of [0, 1, 2, 3]) {
+    for (let k = 0; k < 256; k += 10 + r() * 10) {
+      const len = 6 + r() * 26, w = 8 + r() * 12;
+      c.fillStyle = `hsl(${22 + r() * 8}, 45%, ${18 + r() * 12}%)`;
+      if (edge === 0) c.fillRect(k, 0, w, len); else if (edge === 1) c.fillRect(k, 256 - len, w, len);
+      else if (edge === 2) c.fillRect(0, k, len, w); else c.fillRect(256 - len, k, len, w);
+    }
+  }
+  return tex(cv);
+})();
+const holeMat = new THREE.MeshBasicMaterial({ map: holeTex });
+const plankGeo = new THREE.BoxGeometry(1, 1, 1); plankGeo.userData.shared = true;
+function makePit(zFront, lanes) {
+  const d = speedProgress();
+  const D = rand(2, 2.5) + d * rand(.3, .9);
+  const lo = Math.min(...lanes), hi = Math.max(...lanes);
+  const x0 = lo === 0 ? -2.7 : laneX(lo) - .58, x1 = hi === 2 ? 2.7 : laneX(hi) + .58;
+  const W = x1 - x0, cx = (x0 + x1) / 2;
+  const g = new THREE.Group(); scene.add(g);
+  const hg = new THREE.PlaneGeometry(W, D);
+  const hole = new THREE.Mesh(hg, holeMat); hole.rotation.x = -Math.PI / 2; hole.position.set(cx, .014, 0); g.add(hole);
+  // 무너지기 전엔 금 간 판자가 덮고 있어요
+  const planks = [], cols = Math.max(2, Math.round(W / .5)), rows = 3;
+  for (let i = 0; i < cols; i++) for (let j = 0; j < rows; j++) {
+    const m = new THREE.Mesh(plankGeo, floorMat);
+    m.scale.set(W / cols - .03, .05, D / rows - .03);
+    m.position.set(x0 + (i + .5) * W / cols, .02, -D / 2 + (j + .5) * D / rows);
+    m.rotation.set(rand(-.03, .03), 0, rand(-.03, .03));
+    m.receiveShadow = true; g.add(m);
+    planks.push({ m, delay: rand(0, .35), spin: rand(-4, 4) });
+  }
+  const o = { type: 'pit', z: zFront - D / 2, d: D, parts: [{ x0, x1, y0: -99, y1: .15 }], mesh: g, planks, triggered: false, t: 0 };
+  g.position.z = o.z; return o;
+}
+function updatePit(o, dt) {
+  if (!o.triggered) return;
+  o.t += dt;
+  for (const p of o.planks) {
+    const t = o.t - p.delay; if (t <= 0 || !p.m.visible) continue;
+    p.m.position.y = .02 - 4.5 * t * t;
+    p.m.rotation.x += p.spin * dt; p.m.rotation.z += p.spin * .6 * dt;
+    if (p.m.position.y < -3) p.m.visible = false;
+  }
+}
+function triggerPit(o) {
+  o.triggered = true;
+  for (let k = 0; k < 5; k++) { const w = o.mesh.localToWorld(new THREE.Vector3(rand(-2, 2), .1, rand(-o.d / 2, o.d / 2))); puff(w.x, w.y, w.z); }
+  sfxCollapse(.75); shake = Math.max(shake, .3);
+}
+
+/* ---------- 종이 낱장 아이템 (먹으면 점수!) ---------- */
+const itemTex = (() => {
+  const [cv, c] = mk(64, 80);
+  const g = c.createRadialGradient(32, 40, 10, 32, 40, 44);
+  g.addColorStop(0, 'rgba(255,240,190,.9)'); g.addColorStop(1, 'rgba(255,220,140,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 64, 80);
+  c.fillStyle = '#fbf3df'; c.fillRect(14, 12, 36, 56);
+  c.fillStyle = '#e8d9b5'; c.beginPath(); c.moveTo(40, 12); c.lineTo(50, 22); c.lineTo(40, 22); c.fill();
+  c.fillStyle = 'rgba(90,70,50,.55)';
+  for (let y = 26; y < 62; y += 6) c.fillRect(19, y, y % 18 === 2 ? 18 : 26, 2);
+  return tex(cv);
+})();
+const goldTex = (() => {
+  const [cv, c] = mk(80, 80);
+  const g = c.createRadialGradient(40, 40, 8, 40, 40, 40);
+  g.addColorStop(0, 'rgba(255,230,120,1)'); g.addColorStop(1, 'rgba(255,200,60,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 80, 80);
+  c.fillStyle = '#b8432f'; c.fillRect(20, 18, 40, 46);              // 책 표지
+  c.fillStyle = '#f0c75e'; c.fillRect(20, 18, 6, 46); c.fillRect(30, 28, 24, 4); c.fillRect(30, 52, 24, 3);
+  c.fillStyle = '#ffe27a'; c.beginPath(); c.arc(43, 41, 6, 0, Math.PI * 2); c.fill();
+  return tex(cv);
+})();
+const itemGeo = new THREE.PlaneGeometry(.36, .45);
+const goldGeo = new THREE.PlaneGeometry(.6, .6);
+const itemMat = new THREE.MeshBasicMaterial({ map: itemTex, transparent: true, side: THREE.DoubleSide, toneMapped: false, depthWrite: false });
+const goldMat = new THREE.MeshBasicMaterial({ map: goldTex, transparent: true, side: THREE.DoubleSide, toneMapped: false, depthWrite: false });
+function itemYAt(lane, s) {
+  const x = laneX(lane); let y = .62;
+  for (const o of obstacles) {
+    if (Math.abs(-o.z - s) > o.d / 2 + .5) continue;
+    for (const q of o.parts) {
+      if (x < q.x0 || x > q.x1) continue;
+      if (o.type === 'tower') return null;
+      if (o.type === 'high') y = .3;
+      else if (o.type === 'pit') y = Math.max(y, 1.7);
+      else y = Math.max(y, q.y1 + .85);
+    }
+  }
+  return y;
+}
+function nearCorner(s, m) { for (const sec of sections) if (Math.abs(s - sec.sEnd) < m) return true; return false; }
+function addItem(lane, s, gold) {
+  const y = itemYAt(lane, s);
+  if (y === null || nearCorner(s, 6)) return;
+  const sec = secFor(s), m = new THREE.Mesh(gold ? goldGeo : itemGeo, gold ? goldMat : itemMat);
+  m.position.set(laneX(lane), y, -s); m.renderOrder = 4; sec.inner.add(m);
+  items.push({ m, s, x: laneX(lane), y, val: gold ? 10 : 1, ph: Math.random() * 6 });
+}
+function spawnItems() {
+  const limit = -spawnCursor - 2;
+  while (itemS < limit) {
+    if (nearCorner(itemS, 7)) { itemS += 1.5; continue; }
+    const n = 7 + Math.floor(Math.random() * 9), zig = Math.random() < .35;
+    let lane = Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      if (zig && i === (n >> 1)) lane = lane === 1 ? (Math.random() < .5 ? 0 : 2) : 1;
+      addItem(lane, itemS + i * 1.25, false);
+    }
+    if (Math.random() < .3) addItem(Math.floor(Math.random() * 3), itemS + n * 1.25 + 1.5, true);  // 황금 책 = 10쪽
+    itemS += n * 1.25 + rand(2.5, 6);
+  }
+}
+function updateItems(dt, now, b) {
+  const s = -player.z;
+  comboT -= dt; if (comboT < 0) combo = 0;
+  items = items.filter(it => {
+    if (it.s < s - 4) { if (it.m.parent) it.m.parent.remove(it.m); return false; }
+    it.m.rotation.y = now * 3 + it.ph;
+    it.m.position.y = it.y + Math.sin(now * 4 + it.ph) * .06;
+    if (Math.abs(it.s - s) < .6 && Math.abs(it.x - b.x) < .5 && it.y > b.y - .3 && it.y < b.y + b.h + .4) {
+      score += it.val; combo++; comboT = .6;
+      sfxPage(it.val > 1, combo);
+      for (let k = 0; k < (it.val > 1 ? 10 : 2); k++) addSparkle(it.x + rand(-.1, .1), it.y, -it.s, true);
+      if (it.m.parent) it.m.parent.remove(it.m);
+      return false;
+    }
+    return true;
+  });
+}
+
+/* 300쪽부터 600쪽까지 점점 어려워져요 (0 → 1) */
+function hardLevel() { return Math.min(1, Math.max(0, (meters - 300) / 300)); }
+
+function pushObs(o) { obstacles.push(o); secFor(-o.z).inner.add(o.mesh); }
+function spawn() {
+  let sf = -spawnCursor;
+  for (const sec of sections) if (sf + 16 > sec.sEnd - 10 && sf < sec.sEnd + 11) sf = sec.sEnd + 11;  // 모퉁이 근처엔 장애물 없음
+  spawnCursor = -sf;
+  const d = speedProgress(), h = hardLevel(), zf = spawnCursor, r = Math.random();
+  let extra = 0;   // 뒤따라오는 장애물만큼 다음 간격을 띄워요
+  const hc = elapsed < 4 ? 0 : .22 + .14 * d + .05 * h;
+  const tc = elapsed < 7 ? 0 : .16 + .12 * d + .1 * h;
+  const cc = elapsed < 5 ? 0 : .14 + .08 * d + .12 * quakeQ;
+  if (r < hc) {
+    const lanes = Math.random() < .55 + .25 * h ? [0, 1, 2] : (Math.random() < .5 ? [0, 1] : [1, 2]);
+    const a = makeHigh(zf, lanes);
+    pushObs(a);
+    if (Math.random() < .5 * h) {            // 슬라이드 하자마자 바닥 책
+      const gap = rand(6, 8);
+      pushObs(makeLow(a.z - a.d / 2 - gap, pickLanes(Math.random() < .5 ? 2 : 3)));
+      extra = gap + 1.5;
+    }
+  } else if (r < hc + tc) {
+    const n = (d > .4 && Math.random() < .45 + .35 * h) ? 2 : 1;
+    const lanes = pickLanes(n);
+    const a = makeTower(zf, lanes);
+    pushObs(a);
+    const free = [0, 1, 2].filter(l => !lanes.includes(l));
+    if (n === 2 && Math.random() < .55 * h) {
+      pushObs(makeHigh(zf, free));        // 빈 줄로 들어가서 슬라이드까지
+    } else if (n === 1 && Math.random() < .1 + .35 * d) {
+      pushObs(makeLow(zf, [pick(free)]));  // 남은 한 줄은 꼭 비워 둬요
+    }
+    if (Math.random() < .55 * h) {            // 지그재그: 바로 뒤에 다른 줄 탑
+      const gap = rand(8, 10.5);
+      const next = pickLanes(Math.random() < .5 ? 1 : 2);
+      pushObs(makeTower(a.z - a.d / 2 - gap, next));
+      extra = gap + 1;
+    }
+  } else if (r < hc + tc + cc) {
+    const side = Math.random() < .5 ? -1 : 1, two = Math.random() < .35 + .4 * d + .25 * h;
+    const lanes = side < 0 ? (two ? [0, 1] : [0]) : (two ? [1, 2] : [2]);
+    const a = makeCollapse(zf, side, lanes);
+    pushObs(a);
+    if (Math.random() < .5 * h) {            // 반대쪽 책장도 무너져요
+      const gap = rand(7, 9);
+      pushObs(makeCollapse(a.z - a.d / 2 - gap, -side, side < 0 ? [2] : [0]));
+      extra = gap + 2;
+    }
+  } else if (Math.random() < (elapsed < 8 ? 0 : .14 + .08 * d + .06 * h)) {
+    const lanes = Math.random() < .45 + .35 * h ? [0, 1, 2] : (Math.random() < .5 ? [0, 1] : [1, 2]);
+    pushObs(makePit(zf, lanes));
+  } else {
+    const q = Math.random();
+    const n = q < .2 * d + .25 * h ? 3 : (q < .2 * d + .25 * h + .25 + .3 * d ? 2 : 1);
+    const a = makeLow(zf, pickLanes(n));
+    pushObs(a);
+    if (Math.random() < 0.4 * d + .3 * h) pushObs(makeLow(a.z - a.d / 2 - 6 * S, pickLanes(Math.random() < .5 ? 1 : 2)));
+  }
+  // 다음 장애물까지 거리 (후반엔 조금씩 촘촘해져요)
+  spawnCursor -= (speed * (0.75 + Math.random() * 0.8) * (1 - .22 * h) + 230 * (1 - .25 * h)) * S + extra;
+}
+
+function hit(b, o) {
+  if ((o.type === 'collapse' || o.type === 'pit') && !o.triggered) return false;
+  const pad = 4 * S;
+  if (o.type === 'pit') {
+    if (Math.abs(b.z - o.z) > o.d / 2 - .15) return false;
+    const q = o.parts[0];
+    return b.x > q.x0 + .1 && b.x < q.x1 - .1 && b.y < .12;
+  }
+  if (!(b.z - b.hd + pad < o.z + o.d / 2 && b.z + b.hd - pad > o.z - o.d / 2)) return false;
+  for (const p of o.parts) {
+    if (b.x + b.hw <= p.x0 || b.x - b.hw >= p.x1) continue;
+    if (b.y + pad < p.y1 && b.y + b.h - pad > p.y0) return true;
+  }
+  return false;
+}
+
+/* ---------- 업데이트 ---------- */
+function update(dt, now) {
+  elapsed += dt;
+  const p = speedProgress();
+  speed = START_SPEED + (MAX_SPEED - START_SPEED) * p + 260 * Math.min(1, Math.max(0, (meters - MAX_AT) / 200));
+  const before = meters;
+  meters += (meters < SWITCH_AT ? FAST_PPS : SLOW_PPS) * dt;
+  if (before < SWITCH_AT && meters >= SWITCH_AT) speedUpAt = elapsed;
+  player.z -= speed * S * dt;
+  player.x += (laneX(player.lane) - player.x) * Math.min(1, dt * 16);
+  ensureSections();
+  {
+    const s = -player.z, sc = player.sec.sEnd;
+    if (pendingTurn && s >= sc - .25) doTurn();
+    else if (s > sc + AISLE - .45) { gameOver(); return; }   // 못 꺾고 책장 벽에 쾅!
+  }
+  slideTimer = Math.max(0, slideTimer - dt);
+
+  const g = (!player.onGround && isSliding()) ? GRAVITY * 2.4 : GRAVITY;  // 공중에서 슬라이드 = 빠르게 낙하
+  player.vy -= g * dt;
+  player.y += player.vy * dt;
+  if (player.y <= 0) {
+    player.y = 0; player.vy = 0;
+    if (!player.onGround) {
+      player.onGround = true;
+      if (jumpBuffer > 0 && !isSliding()) jump();
+    }
+  }
+  jumpBuffer = Math.max(0, jumpBuffer - dt);
+  player.run += dt * speed / 40;
+
+  while (spawnCursor > player.z - SPAWN_AHEAD) spawn();
+  const b = playerBox();
+  obstacles = obstacles.filter(o => {
+    if (o.type === 'collapse' && !o.triggered && o.z + o.d / 2 > player.z - 34) triggerCollapse(o);
+    if (o.type === 'pit') { if (!o.triggered && o.z + o.d / 2 > player.z - 30) triggerPit(o); updatePit(o, dt); }
+    if (o.type === 'tower') o.mesh.rotation.z = Math.sin(now * (2.2 + 4 * quakeQ) + o.ph) * (.012 + .03 * quakeQ);
+    if (!o.passed && o.z - o.d / 2 > player.z + b.hd) {
+      o.passed = true;
+      // 같은 줄에 있던 장애물을 점프·슬라이드로 넘기면 반짝!
+      if (o.parts.some(q => b.x + b.hw > q.x0 && b.x - b.hw < q.x1)) {
+        for (let i = 0; i < 10; i++) addSparkle(player.x + rand(-.3, .3), player.y + rand(.2, .9), player.z, true);
+        sfxDing();
+      }
+    }
+    if (o.z - o.d / 2 > player.z + 6) { disposeGroup(o.mesh); return false; }
+    return true;
+  });
+
+  ambientT -= dt;
+  if (ambientT < 0 && elapsed > 2) { ambientT = Math.max(.25, rand(1.2, 2.8) * (1 - .8 * quakeQ) - p * .3); dropAmbient(); }
+  cleanAmbient(false);
+
+  spawnItems();
+  updateItems(dt, now, b);
+  for (const o of obstacles) if (hit(b, o)) { gameOver(o.type === 'pit'); break; }
+}
+
+function animateFairy(dt, now) {
+  const sliding = isSliding() && player.onGround && state === 'play';
+  const target = sliding ? 1 : (state === 'play' && isSliding() ? .4 : 0);
+  tilt += (target - tilt) * Math.min(1, dt * 22);
+  const running = player.onGround && !sliding;
+  const bob = running ? Math.abs(Math.sin(player.run * 1.6)) * .05 : 0;
+  fairy.position.set(fw.x, player.y + bob + (state === 'ready' ? .12 + Math.sin(now * 2.2) * .05 : 0), fw.z);
+  fairy.rotation.y = fairyYaw;
+  // 슬라이드: 몸을 낮게 웅크리고 앞으로 숙이기 / 옆으로 갈 때 몸 기울이기
+  const lag = laneX(player.lane) - player.x;
+  body.rotation.set(-tilt * .55, 0, -lag * .45);
+  body.scale.set(1 + tilt * .12, 1 - tilt * .42, 1 + tilt * .12);
+  const step = running ? Math.sin(player.run * 2.2) * .7 : .25;
+  legL.rotation.x = step * (1 - tilt) - tilt * 1.1; legR.rotation.x = -step * (1 - tilt) - tilt * 1.1;
+  armL.rotation.set(-step * .6 * (1 - tilt) - tilt * .9, 0, -.45); armR.rotation.set(step * .6 * (1 - tilt) - tilt * .9, 0, .45);
+  const flap = Math.abs(Math.sin(now * (running ? 18 : 30)));
+  const wa = (.35 + .75 * flap) * (1 - tilt) + 1.3 * tilt;
+  pivL.rotation.y = wa; pivR.rotation.y = -wa;
+  crownStar.position.y = 1.1 + Math.sin(now * 4) * .02;
+  hairStrands.forEach((pv, i) => { pv.rotation.x = .25 + (running ? .15 : 0) + Math.sin(player.run * 3.2 + i) * .12; pv.rotation.z = Math.sin(now * 3 + i * 1.3) * .08; });
+  backBow.rotation.z = Math.sin(now * 5) * .12;
+  wandStar.scale.setScalar(.22 + Math.sin(now * 9) * .05);
+  wingShine.color.setHSL((now * .12) % 1, .9, .7);
+  fairyLight.intensity = .8 + Math.sin(now * 5) * .08;
+  const y = player.y + .5 - tilt * .25;
+  if (Math.random() < (running ? .25 : .7)) addSparkle(player.x + rand(-.12, .12), y, player.z + .15, false);
+}
+
+const toastEl = document.getElementById('toast');
+let toastTimer = null;
+function showToast(msg) {
+  toastEl.textContent = msg; toastEl.classList.remove('hidden');
+  toastEl.style.animation = 'none'; void toastEl.offsetWidth; toastEl.style.animation = '';
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.add('hidden'), 2200);
+}
+/* ---------- 지진 ----------
+   250쪽부터 땅이 흔들리기 시작해서 400쪽에서 최대.
+   책장이 흔들리고, 등이 그네처럼 흔들리고, 천장에서 가루가 떨어지고, 책이 우수수 쏟아져요. */
+let quakeQ = 0, joltT = 5;
+const FOG_BASE = new THREE.Color(FOG), FOG_DUST = new THREE.Color(0x3e2c1f);
+const DEB_N = 220;
+const debPos = new Float32Array(DEB_N * 3), debVel = new Float32Array(DEB_N);
+for (let i = 0; i < DEB_N; i++) debPos[i * 3 + 1] = -10;
+const debGeo = new THREE.BufferGeometry(); debGeo.setAttribute('position', new THREE.BufferAttribute(debPos, 3));
+const debris = new THREE.Points(debGeo, new THREE.PointsMaterial({ size: .09, map: glowTex, color: 0xc8ab86, transparent: true, opacity: .9, depthWrite: false }));
+debris.frustumCulled = false; scene.add(debris);
+function updateQuake(dt, now) {
+  const target = state === 'play' ? .12 + .88 * Math.min(1, Math.max(0, (meters - 250) / 150)) : 0;
+  quakeQ += (target - quakeQ) * Math.min(1, dt * (state === 'play' ? 1.5 : 4));
+  const q = quakeQ;
+  for (const seg of segments) {
+    const i = seg.idx;
+    seg.lamp.rotation.z = Math.sin(now * 2.6 + i) * .35 * q;
+    seg.lamp.rotation.x = Math.sin(now * 2.1 + i * .7) * .22 * q;
+    if (!seg.mesh) continue;
+    seg.mesh.position.x = (Math.sin(now * 21 + i * 1.7) + Math.sin(now * 13.3 + i)) * .022 * q;
+    seg.mesh.position.y = Math.abs(Math.sin(now * 17 + i * 2.1)) * .02 * q;
+    seg.mesh.rotation.z = Math.sin(now * 11 + i * 2.3) * .011 * q;
+    seg.mesh.rotation.x = Math.sin(now * 8 + i) * .004 * q;
+  }
+  updateLights(q);
+  scene.fog.color.copy(FOG_BASE).lerp(FOG_DUST, q * .6);
+  scene.background.copy(scene.fog.color);
+  scene.fog.near = 9 - 4 * q;
+  // 천장에서 떨어지는 가루
+  const active = Math.floor(DEB_N * q);
+  for (let i = 0; i < DEB_N; i++) {
+    const k = i * 3;
+    if (i >= active) { if (debPos[k + 1] > -5) debPos[k + 1] = -10; continue; }
+    if (debPos[k + 1] < 0) {
+      const w = TW(rand(-AISLE, AISLE), rand(CEIL - .5, CEIL), -player.z + rand(1, 26));
+      debPos[k] = w.x; debPos[k + 1] = w.y; debPos[k + 2] = w.z; debVel[i] = rand(.5, 1.5);
+    }
+    debVel[i] += 6 * dt;
+    debPos[k + 1] -= debVel[i] * dt;
+  }
+  debGeo.attributes.position.needsUpdate = true;
+  // 큰 진동: 쾅! 하고 양쪽 책장에서 책이 쏟아져요
+  if (state === 'play' && q > .25) {
+    joltT -= dt;
+    if (joltT < 0) {
+      joltT = rand(3.5, 6.5) - 2 * q;
+      shake = Math.max(shake, .35 + .35 * q);
+      sfxCollapse(.8);
+      dropAmbient(-1); dropAmbient(1);
+      if (q > .6) dropAmbient();
+      for (let k = 0; k < 4; k++) { const w = TW(rand(-2, 2), CEIL - .4, -player.z + rand(4, 18)); puff(w.x, w.y, w.z); }
+    }
+  } else joltT = 3;
+  if (rumbleGain) rumbleGain.gain.setTargetAtTime(q * .55, AC.currentTime, .15);
+}
+
+/* ---------- 화면 ---------- */
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  baseFov = camera.aspect >= 1 ? 62 : Math.min(80, 2 * Math.atan(Math.tan(25 * Math.PI / 180) / camera.aspect) * 180 / Math.PI);
+}
+addEventListener('resize', resize);
+resize();
+
+const fw = new THREE.Vector3(), _F = new THREE.Vector3(), _R = new THREE.Vector3(), _c = new THREE.Vector3();
+function updateWorld(dt) {
+  ensureSections(); cleanupSections();
+  const sec = player.sec;
+  // 요정 실제 위치 (꺾을 때는 부드럽게 이어 주기)
+  turnOff.multiplyScalar(Math.max(0, 1 - dt * 9));
+  TW(player.x, 0, -player.z, sec, fw).add(turnOff);
+  fairyYaw += (sec.th - fairyYaw) * Math.min(1, dt * 14);
+  camYaw += (sec.th - camYaw) * Math.min(1, dt * 5.5);
+  moteRoot.position.set(fw.x, 0, fw.z); moteRoot.rotation.y = camYaw;
+  _F.set(-Math.sin(camYaw), 0, -Math.cos(camYaw)); _R.set(Math.cos(camYaw), 0, -Math.sin(camYaw));
+  sun.position.set(fw.x + 2.5, 9, fw.z + 3);
+  sun.target.position.set(fw.x + _F.x * 2, 0, fw.z + _F.z * 2);
+  const p = state === 'play' ? speedProgress() : 0;
+  camera.fov = baseFov + 7 * p;
+  camera.updateProjectionMatrix();
+  const tq = performance.now() / 1000, q = quakeQ;
+  const sx = (Math.random() - .5) * shake * .3 + (Math.sin(tq * 29) + Math.sin(tq * 41.3)) * .03 * q;
+  const sy = (Math.random() - .5) * shake * .3 + (Math.sin(tq * 33.7) + Math.sin(tq * 23.1)) * .022 * q;
+  camera.position.copy(fw).addScaledVector(_R, -player.x * .45 + sx).addScaledVector(_F, -3.8);
+  camera.position.y = 2.0 + player.y * .32 + sy;
+  _c.copy(fw).addScaledVector(_R, -player.x * .65).addScaledVector(_F, 8); _c.y = 1 + player.y * .22;
+  camera.lookAt(_c);
+  camera.rotateZ(-(laneX(player.lane) - player.x) * .05 + Math.sin(tq * 17) * .012 * q + (sec.th - camYaw) * .18);
+  arrowMat.opacity = .65 + .35 * Math.sin(tq * 7);
+}
+
+const scoreEl = document.getElementById('score'), bestEl = document.getElementById('bestHud'), hintEl = document.getElementById('hint');
+let shownScore = -1;
+function updateHud() {
+  const m = score;
+  if (m !== shownScore) { shownScore = m; scoreEl.textContent = '📄 ' + m + '쪽'; bestEl.textContent = '최고 ' + best + '쪽'; }
+  if (state === 'play') { hintEl.classList.remove('hidden'); hintEl.style.opacity = elapsed < 5 ? .8 : .3; }
+  else hintEl.classList.add('hidden');
+}
+
+/* ---------- 화면 효과: 빛 번짐(블룸) + 가장자리 어둡게 ----------
+   휴대폰이 버거워하면 자동으로 꺼져요. */
+let composer = null, bloomPass = null, fxOn = true, perfT = 0, perfN = 0, perfSum = 0;
+function setupFX() {
+  if (!THREE.EffectComposer || !THREE.UnrealBloomPass || !THREE.RenderPass || !THREE.ShaderPass) return;
+  try {
+    const gl2 = renderer.capabilities.isWebGL2;
+    const opts = { type: gl2 ? THREE.HalfFloatType : THREE.UnsignedByteType };
+    const rt = gl2 && THREE.WebGLMultisampleRenderTarget ? new THREE.WebGLMultisampleRenderTarget(4, 4, opts) : new THREE.WebGLRenderTarget(4, 4, opts);
+    composer = new THREE.EffectComposer(renderer, rt);
+    composer.addPass(new THREE.RenderPass(scene, camera));
+    bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(256, 256), .65, .5, .8);
+    composer.addPass(bloomPass);
+    composer.addPass(new THREE.ShaderPass({
+      uniforms: { tDiffuse: { value: null } },
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform sampler2D tDiffuse; varying vec2 vUv; void main() { vec4 c = texture2D(tDiffuse, vUv); vec2 d = vUv - .5; c.rgb *= 1.0 - dot(d, d) * 1.1; gl_FragColor = LinearTosRGB(c); }'
+    }));
+    sizeFX();
+  } catch (e) { composer = null; }
+}
+function sizeFX() {
+  if (!composer) return;
+  const pr = renderer.getPixelRatio();
+  composer.setPixelRatio(pr); composer.setSize(innerWidth, innerHeight);
+  bloomPass.setSize(Math.round(innerWidth * pr / 2), Math.round(innerHeight * pr / 2));
+}
+setupFX();
+addEventListener('resize', sizeFX);
+function checkPerf(dt) {
+  if (state !== 'play' || !fxOn) return;
+  perfSum += dt; perfN++; perfT += dt;
+  if (perfT > 3) {
+    if (perfSum / perfN > 1 / 32) {        // 30fps 아래면 효과 끄고 화질 조금 낮추기
+      fxOn = false; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25)); renderer.setSize(innerWidth, innerHeight);
+    }
+    perfT = 0; perfN = 0; perfSum = 0;
+  }
+}
+
+let last = performance.now(), last0 = performance.now();
+function frame(t) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.033, Math.max(0, (t - last) / 1000));
+  last = t;
+  const now = t / 1000;
+  if (state === 'play') update(dt, now);
+  else if (state === 'ready') {
+    player.z -= 3 * dt; player.run += dt * 4;
+    if (-player.z >= player.sec.sEnd - .25) doTurn();     // 시작 화면에서는 알아서 꺾어요
+  }
+  shake = Math.max(0, shake - dt * 1.6);
+  updateWorld(dt);
+  if (state === 'over' && fallT >= 0 && fallT < 1.5) { fallT += dt; fairy.position.y = -7 * fallT * fallT; body.rotation.z += dt * 6; }
+  if (state === 'play' || state === 'ready') { animateFairy(dt, now); updateSparks(dt); updateMotes(dt, now); }
+  if (state !== 'pause') { updateFlyers(dt); updatePuffs(dt); updatePages(dt); }
+  updateQuake(dt, now);
+  updateStreaks(dt);
+  updateHud();
+  animateFlames(now);
+  checkPerf((t - last0) / 1000); last0 = t;
+  if (composer && fxOn) composer.render(dt); else renderer.render(scene, camera);
+}
+
+/* ---------- 소리 ---------- */
+/* BGM: 그리그 「산왕의 궁전에서」(1875, 퍼블릭 도메인)를 8비트로 직접 연주
+   게임 속도가 빨라지면 음악 템포도 같이 빨라져요. */
+let rumbleGain = null;
+let AC = null, master, musicGain, sfxGain, noiseBuf, pulseWave, muted = false;
+try { muted = localStorage.getItem('bookrun-muted') === '1'; } catch (e) {}
+
+function initAudio() {
+  if (!AC) {
+    const C = window.AudioContext || window.webkitAudioContext;
+    if (!C) return;
+    AC = new C();
+    const comp = AC.createDynamicsCompressor();
+    comp.threshold.value = -10; comp.knee.value = 6; comp.ratio.value = 8; comp.attack.value = .003; comp.release.value = .2;
+    comp.connect(AC.destination);
+    master = AC.createGain(); master.gain.value = muted ? 0 : 0.85; master.connect(comp);
+    musicGain = AC.createGain(); musicGain.gain.value = 0.36; musicGain.connect(master);
+    sfxGain = AC.createGain(); sfxGain.gain.value = 1.0; sfxGain.connect(master);
+    noiseBuf = AC.createBuffer(1, AC.sampleRate * 0.5, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const n = 32, re = new Float32Array(n), im = new Float32Array(n);
+    for (let k = 1; k < n; k++) re[k] = (2 / (k * Math.PI)) * Math.sin(k * Math.PI * 0.25);
+    pulseWave = AC.createPeriodicWave(re, im);
+    // 지진 땅울림 (계속 깔리는 낮은 소리)
+    const src = AC.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 140;
+    rumbleGain = AC.createGain(); rumbleGain.gain.value = 0;
+    src.connect(lp); lp.connect(rumbleGain); rumbleGain.connect(sfxGain); src.start();
+  }
+  if (AC.state === 'suspended') AC.resume();
+}
+
+function tone(f, t, dur, vol, wave, dest) {
+  const o = AC.createOscillator(), g = AC.createGain();
+  if (wave === 'pulse') o.setPeriodicWave(pulseWave); else o.type = wave;
+  o.frequency.setValueAtTime(f, t);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.005);
+  g.gain.setValueAtTime(vol, t + Math.max(0.01, dur * 0.7));
+  g.gain.linearRampToValueAtTime(0, t + dur);
+  o.connect(g); g.connect(dest);
+  o.start(t); o.stop(t + dur + 0.02);
+  return o;
+}
+
+function noise(t, dur, vol, freq, dest, type) {
+  const s = AC.createBufferSource(); s.buffer = noiseBuf;
+  const f = AC.createBiquadFilter(); f.type = type || 'highpass'; f.frequency.value = freq;
+  const g = AC.createGain();
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  s.connect(f); f.connect(g); g.connect(dest);
+  s.start(t); s.stop(t + dur + 0.02);
+  return f;
+}
+
+function kick(t) {
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.1);
+  g.gain.setValueAtTime(0.8, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+  o.connect(g); g.connect(musicGain); o.start(t); o.stop(t + 0.14);
+}
+
+function n2f(n) {
+  const m = n.match(/^([A-G])(#?)(\d)$/);
+  const semi = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1]] + (m[2] ? 1 : 0);
+  return 440 * Math.pow(2, (12 * (+m[3] + 1) + semi - 69) / 12);
+}
+function parseTrack(str) {
+  const arr = [];
+  for (const tok of str.split(/\s+/)) {
+    if (!tok || tok === '|') continue;
+    const [n, d] = tok.split(':'); const len = +(d || 1);
+    arr.push(n === 'R' ? null : { f: n2f(n), len });
+    for (let i = 1; i < len; i++) arr.push(null);
+  }
+  return arr;
+}
+const MEL_A = 'A4 B4 C5 D5 E5 C5 E5:2 | D#5 B4 D#5:2 D5 A#4 D5:2 | A4 B4 C5 D5 E5 C5 E5 A5 | G5 E5 C5 E5 G5:4';
+const MEL_B = 'E5 F#5 G#5 A5 B5 G#5 B5:2 | C6 A5 C6:2 B5 G#5 B5:2 | E5 F#5 G#5 A5 B5 G#5 B5:2 | C6 A5 C6:2 B5:4';
+const BASS_A = 'A2:2 A2:2 A2:2 A2:2 | B2:2 B2:2 A#2:2 A#2:2 | A2:2 A2:2 A2:2 A2:2 | C3:2 C3:2 E2:2 E2:2';
+const BASS_B = 'E2:2 E2:2 E2:2 E2:2 | A2:2 A2:2 E2:2 E2:2 | E2:2 E2:2 E2:2 E2:2 | A2:2 A2:2 E2:2 E2:2';
+const SONG_MEL = [MEL_A, MEL_A, MEL_B, MEL_A].flatMap(parseTrack);
+const SONG_BASS = [BASS_A, BASS_A, BASS_B, BASS_A].flatMap(parseTrack);
+
+let musicOn = false, musicStep = 0, nextNoteTime = 0, musicTimer = null;
+function startMusic() {
+  if (!AC) return;
+  musicOn = true; musicStep = 0; nextNoteTime = AC.currentTime + 0.08;
+  clearInterval(musicTimer); musicTimer = setInterval(scheduleMusic, 25);
+}
+function stopMusic() { musicOn = false; clearInterval(musicTimer); }
+function resumeMusic() {
+  if (!AC) return;
+  musicOn = true; nextNoteTime = AC.currentTime + 0.08;
+  clearInterval(musicTimer); musicTimer = setInterval(scheduleMusic, 25);
+}
+function scheduleMusic() {
+  if (!musicOn || !AC) return;
+  if (nextNoteTime < AC.currentTime - 0.2) nextNoteTime = AC.currentTime + 0.05;
+  while (nextNoteTime < AC.currentTime + 0.12) {
+    const prog = speedProgress();
+    const bpm = 110 + prog * 110;
+    const e = 60 / bpm / 2;
+    const i = musicStep % SONG_MEL.length;
+    const m = SONG_MEL[i], b = SONG_BASS[i];
+    if (m) tone(m.f, nextNoteTime, m.len * e * 0.9, 0.35, 'pulse', musicGain);
+    if (b) tone(b.f, nextNoteTime, b.len * e * 0.55, 0.75, 'triangle', musicGain);
+    if (i % 2 === 1) noise(nextNoteTime, 0.03, 0.1 + prog * 0.12, 7000, musicGain);
+    if (prog > 0.35 && i % 4 === 0) kick(nextNoteTime);
+    nextNoteTime += e; musicStep++;
+  }
+}
+
+function sfxJump() {
+  if (!AC) return;
+  const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+  o.setPeriodicWave(pulseWave);
+  o.frequency.setValueAtTime(380, t); o.frequency.exponentialRampToValueAtTime(950, t + 0.12);
+  g.gain.setValueAtTime(0.35, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.17);
+  o.connect(g); g.connect(sfxGain); o.start(t); o.stop(t + 0.2);
+}
+function sfxSlide() {
+  if (!AC) return;
+  const t = AC.currentTime;
+  const f = noise(t, 0.26, 0.55, 3200, sfxGain, 'bandpass');
+  f.Q.value = 1.2; f.frequency.exponentialRampToValueAtTime(500, t + 0.24);
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(260, t); o.frequency.exponentialRampToValueAtTime(110, t + 0.15);
+  g.gain.setValueAtTime(0.4, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.17);
+  o.connect(g); g.connect(sfxGain); o.start(t); o.stop(t + 0.2);
+}
+function sfxHit() {
+  if (!AC) return;
+  const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain();
+  o.type = 'square';
+  o.frequency.setValueAtTime(440, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.45);
+  g.gain.setValueAtTime(0.25, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+  o.connect(g); g.connect(sfxGain); o.start(t); o.stop(t + 0.52);
+  noise(t, 0.3, 0.4, 900, sfxGain, 'lowpass');
+}
+
+function sfxWhoosh() {
+  if (!AC) return;
+  const t = AC.currentTime;
+  const f = noise(t, 0.16, 0.35, 1800, sfxGain, 'bandpass');
+  f.Q.value = 2; f.frequency.exponentialRampToValueAtTime(4200, t + 0.14);
+}
+function sfxThud() {
+  if (!AC) return;
+  const t = AC.currentTime;
+  noise(t, 0.09, 0.35, 380, sfxGain, 'lowpass');
+}
+function sfxRumble() {
+  if (!AC) return;
+  const t = AC.currentTime;
+  noise(t, 0.9, 0.7, 260, sfxGain, 'lowpass');
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = 'sawtooth'; o.frequency.setValueAtTime(70, t); o.frequency.exponentialRampToValueAtTime(35, t + .7);
+  g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.001, t + .8);
+  o.connect(g); g.connect(sfxGain); o.start(t); o.stop(t + .85);
+}
+/* 우르르 쾅쾅! (책장 무너지는 소리) */
+function sfxCollapse(vol) {
+  if (!AC) return;
+  const v = vol || 1, t = AC.currentTime;
+  // 우르르: 길게 깔리는 낮은 울림
+  const src = AC.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+  const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(320, t); lp.frequency.exponentialRampToValueAtTime(90, t + 1.5);
+  const g = AC.createGain(); g.gain.setValueAtTime(.001, t); g.gain.exponentialRampToValueAtTime(1.1 * v, t + .08); g.gain.exponentialRampToValueAtTime(.001, t + 1.6);
+  src.connect(lp); lp.connect(g); g.connect(sfxGain); src.start(t); src.stop(t + 1.65);
+  const o = AC.createOscillator(), og = AC.createGain();
+  o.type = 'sawtooth'; o.frequency.setValueAtTime(58, t); o.frequency.exponentialRampToValueAtTime(28, t + 1.2);
+  og.gain.setValueAtTime(.28 * v, t); og.gain.exponentialRampToValueAtTime(.001, t + 1.3);
+  o.connect(og); og.connect(sfxGain); o.start(t); o.stop(t + 1.35);
+  // 쾅! 쾅!
+  for (const [dt, a] of [[0, 1], [.2, .75], [.42, .9], [.7, .65], [.95, .5]]) {
+    const tt = t + dt + Math.random() * .05, b = AC.createOscillator(), bg = AC.createGain();
+    b.type = 'sine'; b.frequency.setValueAtTime(130, tt); b.frequency.exponentialRampToValueAtTime(36, tt + .32);
+    bg.gain.setValueAtTime(1.1 * a * v, tt); bg.gain.exponentialRampToValueAtTime(.001, tt + .4);
+    b.connect(bg); bg.connect(sfxGain); b.start(tt); b.stop(tt + .42);
+    noise(tt, .22, .7 * a * v, 700, sfxGain, 'lowpass');
+  }
+  // 와르르: 책이 바닥에 투둑투둑
+  for (let k = 0; k < 16; k++) {
+    const f = noise(t + .12 + k * .065 + Math.random() * .04, .05, (.2 + Math.random() * .25) * v, 600 + Math.random() * 1400, sfxGain, 'bandpass');
+    f.Q.value = 1.5;
+  }
+}
+function sfxPage(gold, c) {
+  if (!AC) return;
+  const t = AC.currentTime, f = 880 * Math.pow(2, Math.min(c, 14) / 12);
+  if (gold) { tone(1047, t, .08, .25, 'pulse', sfxGain); tone(1319, t + .07, .08, .25, 'pulse', sfxGain); tone(1568, t + .14, .14, .25, 'pulse', sfxGain); }
+  else tone(f, t, .06, .16, 'pulse', sfxGain);
+}
+function sfxDing() {
+  if (!AC) return;
+  const t = AC.currentTime;
+  tone(1320, t, .07, .18, 'pulse', sfxGain); tone(1760, t + .06, .1, .16, 'pulse', sfxGain);
+}
+
+function setMuted(m) {
+  muted = m;
+  try { localStorage.setItem('bookrun-muted', m ? '1' : '0'); } catch (e) {}
+  if (master) master.gain.value = m ? 0 : 0.85;
+  document.getElementById('muteBtn').textContent = m ? '🔇' : '🔊';
+}
+document.addEventListener('visibilitychange', () => {
+  if (!AC) return;
+  if (document.hidden) AC.suspend(); else AC.resume();
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+
+/* ---------- 게임 흐름 ---------- */
+function start() {
+  initAudio();
+  reset();
+  startMusic();
+  sfxCollapse(.7); shake = .45;
+  state = 'play';
+  document.getElementById('startScreen').classList.add('hidden');
+  document.getElementById('overScreen').classList.add('hidden');
+  setPauseBtn(true);
+}
+
+function pause() {
+  if (state !== 'play') return;
+  state = 'pause';
+  stopMusic();
+  slideHold = false; slideKey = false; touches.clear();
+  document.getElementById('pauseText').textContent = '지금까지 종이 ' + score + '쪽 모음';
+  document.getElementById('pauseScreen').classList.remove('hidden');
+  document.getElementById('pauseBtn').textContent = '▶';
+}
+function resume() {
+  if (state !== 'pause') return;
+  initAudio();
+  document.getElementById('pauseScreen').classList.add('hidden');
+  document.getElementById('pauseBtn').textContent = '⏸';
+  state = 'play';
+  resumeMusic();
+}
+function setPauseBtn(show) { document.getElementById('pauseBtn').classList.toggle('hidden', !show); }
+
+function recommend(m) {
+  // 가장 가까운 쪽수 기준 ±10쪽 안의 책 중에서 무작위로 하나
+  const minDiff = Math.min(...BOOKS.map(b => Math.abs(b.pages - m)));
+  const near = BOOKS.filter(b => Math.abs(b.pages - m) <= minDiff + 10);
+  const pick = near[Math.floor(Math.random() * near.length)];
+  const next = BOOKS.filter(b => b.pages > m).sort((a, b) => a.pages - b.pages)[0];
+  return { pick, next };
+}
+
+function pick_msg(m) {
+  if (m < 100) return '도와줘서 고마워요! 짧았지만 든든했어요. 고마운 마음을 담아 이 책을 드릴게요.';
+  if (m < 300) return '덕분에 여기까지 빠져나왔어요! 함께 달린 만큼의 책을 골랐어요. 꼭 읽어 주세요.';
+  if (m < 450) return '책장이 와르르 무너지는데도 끝까지 함께해 줬네요! 정말 고마워요. 제 선물이에요.';
+  return '세상에, 그 지진 속을 여기까지! 당신은 최고의 탈출 파트너예요. 고마운 마음을 가득 담았어요.';
+}
+
+let fallT = -1;
+function gameOver(fell) {
+  state = 'over';
+  fallT = fell ? 0 : -1;
+  stopMusic(); sfxHit(); setPauseBtn(false);
+  shake = .7;
+  if (!fell) burstPages(fw.x, player.y + .4, fw.z);
+  overAt = performance.now();
+  const m = score;
+  const isBest = m > best;
+  if (isBest) { best = m; try { localStorage.setItem('bookrun3d-best-pages', m); } catch (e) {} }
+  shownScore = -1;
+  const { pick } = recommend(m);
+  document.getElementById('scoreText').textContent = m + '쪽';
+  document.getElementById('bestText').textContent = isBest ? '🎉 최고 탈출 기록!' : '최고 기록 ' + best + '쪽';
+  document.getElementById('fairyMsg').textContent = '“' + pick_msg(m) + '”';
+  document.getElementById('recLabel').textContent = '🎁 모은 종이 ' + m + '쪽만큼 고른 ' + pick.pages + '쪽 책';
+  document.getElementById('recTitle').textContent = pick.title;
+  document.getElementById('recMeta').textContent = pick.author + ' · ' + pick.pub + ' · ' + pick.pages + '쪽';
+  document.getElementById('recNote').textContent = pick.note || '';
+  const link = document.getElementById('recLink');
+  if (pick.url) { link.href = pick.url; link.style.display = 'inline-block'; } else link.style.display = 'none';
+  setTimeout(() => { if (state === 'over') document.getElementById('overScreen').classList.remove('hidden'); }, 900);
+}
+
+/* ---------- 관리자 책 목록 ----------
+   열기: 키보드로 admin 입력 / 시작 화면 제목을 빠르게 5번 탭 */
+function openAdmin() {
+  if (state === 'play') pause();
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const sorted = [...BOOKS].sort((a, b) => a.pages - b.pages);
+  const ranges = [[0, 100, '100쪽 미만'], [100, 200, '100~199쪽'], [200, 300, '200~299쪽'], [300, 400, '300~399쪽'],
+                  [400, 500, '400~499쪽'], [500, 600, '500~599쪽'], [600, 700, '600~699쪽'],
+                  [700, 800, '700~799쪽'], [800, 1000, '800~999쪽'], [1000, 1e9, '1000쪽 이상']];
+  let sum = '총 <b>' + BOOKS.length + '권</b><br>', html = '';
+  for (const [lo, hi, label] of ranges) {
+    const list = sorted.filter(b => b.pages >= lo && b.pages < hi);
+    sum += '<span>' + label + ' ' + list.length + '권</span>';
+    if (!list.length) continue;
+    html += '<h2>' + label + ' · ' + list.length + '권</h2>';
+    for (const b of list) {
+      html += '<div class="admin-row"><div class="pg">' + b.pages + '쪽</div><div class="info"><div class="t">' + esc(b.title) +
+        '</div><div class="a">' + esc(b.author) + ' · ' + esc(b.pub || '') + (b.note ? ' · ' + esc(b.note) : '') + '</div></div>' +
+        (b.url ? '<a href="' + esc(b.url) + '" target="_blank" rel="noopener">서점 →</a>' : '') + '</div>';
+    }
+  }
+  document.getElementById('adminSummary').innerHTML = sum;
+  document.getElementById('adminList').innerHTML = html;
+  const el = document.getElementById('adminScreen');
+  el.classList.remove('hidden'); el.scrollTop = 0;
+}
+function closeAdmin() { document.getElementById('adminScreen').classList.add('hidden'); }
+const adminOpen = () => !document.getElementById('adminScreen').classList.contains('hidden');
+document.getElementById('adminClose').addEventListener('click', closeAdmin);
+let adminKeys = '';
+addEventListener('keydown', e => {
+  if (e.key && e.key.length === 1) {
+    adminKeys = (adminKeys + e.key.toLowerCase()).slice(-5);
+    if (adminKeys === 'admin') { adminKeys = ''; openAdmin(); }
+  }
+  if (e.code === 'Escape' && adminOpen()) { e.stopImmediatePropagation(); closeAdmin(); }
+}, true);
+let titleTaps = [];
+document.getElementById('startTitle').addEventListener('click', () => {
+  const now = performance.now();
+  titleTaps = titleTaps.filter(t => now - t < 2000); titleTaps.push(now);
+  if (titleTaps.length >= 5) { titleTaps = []; openAdmin(); }
+});
+
+/* ---------- 조작 ----------
+   화면 밀기(스와이프): ← → 옆으로 / ↑ 점프 / ↓ 슬라이드, 톡 치기 = 점프 */
+const wrap = document.getElementById('wrap');
+const touches = new Map();
+wrap.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (state !== 'play') return;
+  touches.set(e.pointerId, { x: e.clientX, y: e.clientY, done: false, slide: false });
+});
+wrap.addEventListener('pointermove', e => {
+  const tc = touches.get(e.pointerId);
+  if (!tc || tc.done || state !== 'play') return;
+  const dx = e.clientX - tc.x, dy = e.clientY - tc.y;
+  const th = Math.max(22, Math.min(innerWidth, innerHeight) * .045);
+  if (Math.hypot(dx, dy) < th) return;
+  tc.done = true;
+  if (Math.abs(dx) > Math.abs(dy)) steer(dx > 0 ? 1 : -1);
+  else if (dy < 0) jump();
+  else { startSlide(true); tc.slide = true; }
+});
+function releasePointer(e) {
+  const tc = touches.get(e.pointerId);
+  touches.delete(e.pointerId);
+  if (!tc) return;
+  if (tc.slide) slideHold = [...touches.values()].some(t => t.slide);
+  else if (!tc.done && e.type === 'pointerup' && state === 'play') jump();
+}
+wrap.addEventListener('pointerup', releasePointer);
+wrap.addEventListener('pointercancel', releasePointer);
+wrap.addEventListener('contextmenu', e => e.preventDefault());
+
+addEventListener('keydown', e => {
+  if (adminOpen()) return;
+  const k = e.code;
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'Enter'].includes(k)) e.preventDefault();
+  if ((k === 'KeyP' || k === 'Escape') && !e.repeat) {
+    if (state === 'play') pause(); else if (state === 'pause') resume();
+    return;
+  }
+  if (state === 'pause') {
+    if ((k === 'Space' || k === 'Enter') && !e.repeat) resume();
+    return;
+  }
+  if (state !== 'play') {
+    if ((k === 'Space' || k === 'Enter') && !e.repeat &&
+        (state === 'ready' || performance.now() - overAt > 1300)) start();
+    return;
+  }
+  if (e.repeat) return;
+  if (k === 'Space' || k === 'ArrowUp' || k === 'KeyW') jump();
+  if (k === 'ArrowLeft' || k === 'KeyA') steer(-1);
+  if (k === 'ArrowRight' || k === 'KeyD') steer(1);
+  if ((k === 'ArrowDown' || k === 'KeyS') && !slideKey) { startSlide(false); slideKey = true; }
+});
+addEventListener('keyup', e => {
+  if (e.code === 'ArrowDown' || e.code === 'KeyS') slideKey = false;
+});
+
+document.getElementById('startBtn').addEventListener('click', start);
+document.getElementById('muteBtn').addEventListener('click', () => { initAudio(); setMuted(!muted); });
+setMuted(muted);
+document.getElementById('pauseBtn').addEventListener('click', () => state === 'pause' ? resume() : pause());
+document.getElementById('resumeBtn').addEventListener('click', resume);
+document.getElementById('retryBtn').addEventListener('click', () => {
+  if (performance.now() - overAt > 1100) start();
+});
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
